@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "An efficient drone routing and simulation system."
 requires-python = ">=3.12"
 dependencies = [
-    "tuiloom==0.2.0",
+    "tuiloom==0.3.0",
 ]
 
 [dependency-groups]
@@ -13,21 +13,6 @@ dev = [
     "mypy>=1.11",
     "pytest>=8.0",
 ]
-
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-include = ["fly_in*"]
-
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_ignores = true
-ignore_missing_imports = true
-disallow_untyped_defs = true
-check_untyped_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
