@@ -23,7 +23,7 @@ class ZoneMetadata(BaseModel):
             raise ValueError(
                 "color metadata must be a valid "
                 "single-word string.\n"
-                f"Got \"{color}\""
+                f'Got "{color}"'
             )
 
         return color
@@ -43,7 +43,7 @@ class Zone(BaseModel):
                 raise ValueError(
                     "A zone name can use any valid characters "
                     "except dashes and spaces.\n"
-                    f"Got: {name}"
+                    f'Got: "{name}"'
                 )
 
         return name

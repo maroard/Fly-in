@@ -6,7 +6,7 @@ def main() -> None:
         app = Application()
         app.run()
     except Exception as error:
-        raise Exception(f"Error: {error}")
+        print(f"Error: {error}")
 
 
 if __name__ == "__main__":

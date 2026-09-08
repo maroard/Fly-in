@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import NoReturn
 
 from pydantic import ValidationError
 
@@ -336,11 +335,7 @@ class Parser:
         return value
 
     @staticmethod
-    def _get_nb_drones(
-        raw_value: str,
-        line_number: int,
-        raw_line: str,
-    ) -> int:
+    def _get_nb_drones(raw_value: str, line_number: int, raw_line: str) -> int:
         return Parser._parse_positive_integer(
             raw_value,
             "nb_drones",
@@ -349,10 +344,7 @@ class Parser:
         )
 
     @staticmethod
-    def _split_line(
-        line: str,
-        line_number: int,
-    ) -> tuple[str, str]:
+    def _split_line(line: str, line_number: int) -> tuple[str, str]:
         key, separator, value = line.partition(":")
 
         key = key.strip()
@@ -448,11 +440,7 @@ class Parser:
         return "; ".join(messages)
 
     @staticmethod
-    def _raise_parsing_error(
-        line_number: int,
-        line: str,
-        cause: str,
-    ) -> NoReturn:
+    def _raise_parsing_error(line_number: int, line: str, cause: str) -> None:
         suffix = f'\nGot: "{line}"' if line else ""
 
         raise ValueError(

@@ -19,18 +19,26 @@ def build_main_menu(application: Application) -> TerminalMenu:
         ),
     )
 
+    def run_simulation(context: CommandContext) -> None:
+        context.menu.set_content_source(application.renderer.render)
+
     def open_map_menu(context: CommandContext) -> None:
         context.app.push_menu(
             build_map_menu(application)
         )
 
-    menu.add_command(
-        label="Change map",
-        behavior=open_map_menu,
-    )
-
     def display_map_note(context: CommandContext) -> None:
         context.menu.screen_context.message = application.map_config.note
+
+    menu.add_command(
+        label="Run simulation",
+        behavior=run_simulation
+    )
+
+    menu.add_command(
+        label="Change map",
+        behavior=open_map_menu
+    )
 
     menu.add_command(
         label="Show map note",
