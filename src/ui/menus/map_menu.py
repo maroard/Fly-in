@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from os import get_terminal_size
+
 
 from tuiloom import CommandContext, ScreenContext, TerminalMenu
 
@@ -64,7 +66,7 @@ def map_screen(
             application.graph = Graph(application.map_config)
             application.renderer = Renderer(
                 graph=application.graph,
-                width=40,
+                width=get_terminal_size().columns,
                 height=20,
             )
 

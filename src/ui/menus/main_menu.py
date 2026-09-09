@@ -20,7 +20,8 @@ def build_main_menu(application: Application) -> TerminalMenu:
     )
 
     def run_simulation(context: CommandContext) -> None:
-        context.menu.set_content_source(application.renderer.render)
+        if application.renderer is not None:
+            context.menu.set_content_source(application.renderer.render)
 
     def open_map_menu(context: CommandContext) -> None:
         context.app.push_menu(
@@ -28,7 +29,16 @@ def build_main_menu(application: Application) -> TerminalMenu:
         )
 
     def display_map_note(context: CommandContext) -> None:
-        context.menu.screen_context.message = application.map_config.note
+        if application.map_config is not None:
+            context.menu.screen_context.message = application.map_config.note
+        context.menu.set_command_label(map_note_command, "Hide map note")
+        context.menu.set_command_behavior(map_note_command, hide_map_note)
+
+    def hide_map_note(context: CommandContext) -> None:
+        if application.map_config is not None:
+            context.menu.screen_context.message = None
+        context.menu.set_command_label(map_note_command, "Show map note")
+        context.menu.set_command_behavior(map_note_command, display_map_note)
 
     menu.add_command(
         label="Run simulation",
@@ -40,7 +50,7 @@ def build_main_menu(application: Application) -> TerminalMenu:
         behavior=open_map_menu
     )
 
-    menu.add_command(
+    map_note_command = menu.add_command(
         label="Show map note",
         behavior=display_map_note
     )

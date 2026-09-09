@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "An efficient drone routing and simulation system."
 requires-python = ">=3.12"
 dependencies = [
-    "tuiloom==0.3.0",
+    # "tuiloom==0.3.0",
+	"tuiloom @ file:///home/maroard/Bureau/42/Tuiloom",
     "pydantic==2.13.5",
 ]
 
