@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from os import get_terminal_size
 
 
 from tuiloom import CommandContext, ScreenContext, TerminalMenu
@@ -10,6 +9,7 @@ from tuiloom import CommandContext, ScreenContext, TerminalMenu
 from src.parsing.parser import Parser
 from src.domain.graph import Graph
 from src.rendering.renderer import Renderer
+from src.simulation import Simulator
 
 if TYPE_CHECKING:
     from src.application import Application
@@ -64,11 +64,8 @@ def map_screen(
             application.parser = Parser(selected_map)
             application.map_config = application.parser.process()
             application.graph = Graph(application.map_config)
-            application.renderer = Renderer(
-                graph=application.graph,
-                width=get_terminal_size().columns,
-                height=20,
-            )
+            application.renderer = Renderer(application.graph)
+            application.simulator = Simulator(application.graph)
 
             application.main_menu.screen_context.text = (
                 f"Current map: {category_path.name}/{selected_map.name}"

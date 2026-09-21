@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tuiloom import TerminalApp, TerminalMenu
+from tuiloom import ContentPanel, TerminalApp, TerminalMenu
 
 from src.ui.menus.main_menu import build_main_menu
 from src.ui.menus.map_menu import build_map_menu
@@ -8,6 +8,7 @@ from src.parsing.parser import Parser
 from src.parsing.map_config import MapConfig
 from src.domain.graph import Graph
 from src.rendering.renderer import Renderer
+from src.simulation import Simulator
 
 
 class Application:
@@ -17,7 +18,10 @@ class Application:
         self.map_config: MapConfig | None = None
         self.graph: Graph | None = None
         self.renderer: Renderer | None = None
+        self.simulator: Simulator | None = None
 
+        self.graph_panel: ContentPanel | None = None
+        self.output_panel: ContentPanel | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
