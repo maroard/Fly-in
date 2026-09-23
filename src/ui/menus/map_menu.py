@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from os import get_terminal_size
 
 
 from tuiloom import CommandContext, ScreenContext, TerminalMenu
@@ -64,11 +63,8 @@ def map_screen(
             application.parser = Parser(selected_map)
             application.map_config = application.parser.process()
             application.graph = Graph(application.map_config)
-            application.renderer = Renderer(
-                graph=application.graph,
-                width=get_terminal_size().columns,
-                height=20,
-            )
+            application.renderer = Renderer(application.graph)
+            application.simulator = None
 
             application.main_menu.screen_context.text = (
                 f"Current map: {category_path.name}/{selected_map.name}"

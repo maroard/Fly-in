@@ -1,3 +1,6 @@
+from tuiloom import display_width
+
+
 class Canvas:
     def __init__(self, width: int, height: int):
         self.width = width
@@ -8,7 +11,7 @@ class Canvas:
         ]
 
     def set(self, x: int, y: int, char: str) -> None:
-        if len(char) != 1:
+        if display_width(char) != 1:
             raise ValueError(
                 "Canvas.set() expects exactly one character; "
                 f'received "{char}" ({len(char)} characters).'
