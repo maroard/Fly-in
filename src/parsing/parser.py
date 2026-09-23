@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import NoReturn
 
 from pydantic import ValidationError
 
@@ -214,7 +215,7 @@ class Parser:
             metadata_values["zone_type"] = metadata_values.pop("zone")
 
         try:
-            metadata = ZoneMetadata(**metadata_values)
+            metadata = ZoneMetadata.model_validate(metadata_values)
         except ValidationError as error:
             self._raise_parsing_error(
                 line_number,
@@ -293,7 +294,7 @@ class Parser:
             )
 
         try:
-            metadata = ConnectionMetadata(**metadata_values)
+            metadata = ConnectionMetadata.model_validate(metadata_values)
         except ValidationError as error:
             self._raise_parsing_error(
                 line_number,
@@ -370,6 +371,8 @@ class Parser:
             len(raw_metadata) < 2
             or not raw_metadata.startswith("[")
             or not raw_metadata.endswith("]")
+            or "[" in raw_metadata[1:-1]
+            or "]" in raw_metadata[1:-1]
         ):
             Parser._raise_parsing_error(
                 line_number,
@@ -440,7 +443,9 @@ class Parser:
         return "; ".join(messages)
 
     @staticmethod
-    def _raise_parsing_error(line_number: int, line: str, cause: str) -> None:
+    def _raise_parsing_error(
+        line_number: int, line: str, cause: str
+    ) -> NoReturn:
         suffix = f'\nGot: "{line}"' if line else ""
 
         raise ValueError(

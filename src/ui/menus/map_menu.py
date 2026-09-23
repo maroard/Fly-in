@@ -65,6 +65,12 @@ def map_screen(
             application.graph = Graph(application.map_config)
             application.renderer = Renderer(application.graph)
             application.simulator = None
+            if application.graph_panel is not None:
+                application.graph_panel.remove()
+            if application.output_panel is not None:
+                application.output_panel.remove()
+            application.graph_panel = None
+            application.output_panel = None
 
             application.main_menu.screen_context.text = (
                 f"Current map: {category_path.name}/{selected_map.name}"

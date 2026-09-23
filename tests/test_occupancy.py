@@ -56,10 +56,10 @@ def test_simulator_updates_shared_occupancy_after_arrival() -> None:
     assert occupancy.zone_occupancy("a") == 2
     simulator.state.drones[0].start_transit(link, b)
     simulator.step()
-    assert occupancy.zone_occupancy("a") == 1
-    assert occupancy.zone_occupancy("b") == 1
+    assert occupancy.zone_occupancy("a") == 0
+    assert occupancy.zone_occupancy("b") == 2
     assert not occupancy.is_connection_occupied("a", "b")
-    assert simulator._get_zone_occupancy(a) == 1
+    assert simulator._get_zone_occupancy(a) == 0
     assert simulator._get_connection_occupancy(link) == 0
 
 
@@ -89,7 +89,9 @@ def test_run_shares_occupancy_with_renderer() -> None:
     simulator = application.simulator
     assert simulator is not None
     assert application.renderer.occupancy is simulator.occupancy
-    assert application.renderer.occupancy.zone_occupancy("a") == 2
+    assert application.renderer.occupancy.zone_occupancy("b") == 2
+    assert len(simulator.state.turns) == 1
+    assert len(simulator.state.turns[0].movements) == 2
     assert application.renderer.render(ContentSize(40, 20))
     command.behavior(context)
     assert application.simulator is simulator

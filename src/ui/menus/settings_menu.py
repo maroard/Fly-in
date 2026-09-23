@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from tuiloom import CommandContext, ScreenContent, ScreenContext, TerminalMenu
+from tuiloom import CommandContext, ScreenContext, TerminalMenu
 
 if TYPE_CHECKING:
     from src.application import Application

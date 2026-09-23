@@ -61,7 +61,12 @@ class Renderer:
                 )
             )
 
-    def _project(self, projector: Projector, x: int, y: int) -> tuple[int, int]:
+    def _project(
+        self,
+        projector: Projector,
+        x: int,
+        y: int,
+    ) -> tuple[int, int]:
         screen_x, screen_y = projector.project(x, y)
         return (
             screen_x + self.padding,

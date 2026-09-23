@@ -19,8 +19,8 @@ class Application:
         self.graph: Graph | None = None
         self.renderer: Renderer | None = None
         self.simulator: Simulator | None = None
-        self.content_panel: ContentPanel | None = None
-
+        self.graph_panel: ContentPanel | None = None
+        self.output_panel: ContentPanel | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
