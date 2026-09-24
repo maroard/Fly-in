@@ -6,7 +6,7 @@ from tuiloom import CommandContext, ScreenContent, ScreenContext, TerminalMenu
 
 from src.output.formatter import format_turn
 from src.simulation.simulator import Simulator
-from src.ui.menus.map_menu import build_map_menu
+from src.ui.menus.settings_menu import build_settings_menu
 
 if TYPE_CHECKING:
     from src.application import Application
@@ -69,27 +69,10 @@ def build_main_menu(application: Application) -> TerminalMenu:
 
         application.simulator.simulate()
 
-    def open_map_menu(context: CommandContext) -> None:
-        context.app.push_menu(build_map_menu(application))
-
-    def display_map_note(context: CommandContext) -> None:
-        if application.map_config is not None:
-            context.menu.screen_context.message = application.map_config.note
-        context.menu.set_command_label(map_note_command, "Hide map note")
-        context.menu.set_command_behavior(map_note_command, hide_map_note)
-
-    def hide_map_note(context: CommandContext) -> None:
-        context.menu.screen_context.message = None
-        context.menu.set_command_label(map_note_command, "Show map note")
-        context.menu.set_command_behavior(map_note_command, display_map_note)
-
     def credit(context: CommandContext) -> None:
         context.menu.toggle_message("credit")
 
     menu.add_command(label="Run simulation", behavior=run_simulation)
-    menu.add_command(label="Change map", behavior=open_map_menu)
-    map_note_command = menu.add_command(
-        label="Show map note", behavior=display_map_note
-    )
+    menu.add_menu(submenu=build_settings_menu(application), label="Settings")
     menu.add_command(label="Credit", behavior=credit)
     return menu

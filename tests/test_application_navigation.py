@@ -29,7 +29,7 @@ def test_initial_map_selection_and_later_map_change(
     assert len(entry_menus) == 1
     map_menu = entry_menus[0]
     assert application.main_menu is not map_menu
-    assert "Change map" in [
+    assert "Settings" in [
         command.label for command in application.main_menu.commands
     ]
     main_text = application.main_menu.screen_context.text
@@ -54,12 +54,15 @@ def test_initial_map_selection_and_later_map_change(
     assert len(application.main_menu.content_panels) == 2
     assert application.simulator is not None
 
-    activate(application.main_menu, "Change map")
+    activate(application.main_menu, "Settings")
+    settings_menu = application.terminal_app._menu_stack[-1]
+    activate(settings_menu, "Change map")
     map_menu = application.terminal_app._menu_stack[-1]
     activate(map_menu, "Medium")
     medium_menu = application.terminal_app._menu_stack[-1]
     assert application.terminal_app._menu_stack == [
         application.main_menu,
+        settings_menu,
         map_menu,
         medium_menu,
     ]
