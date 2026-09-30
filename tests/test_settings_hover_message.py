@@ -21,7 +21,8 @@ def test_mode_descriptions_follow_hover_without_replacing_footer() -> None:
     assert "Run the simulation until all drones arrive" in renderer.render()
     assert menu.active_message_key == "credit"
     press("right")
-    assert "Advance the simulation one turn at a time" in renderer.render()
+    step_help = "Advance the simulation one movement at a time"
+    assert step_help in renderer.render()
     press("down")
     assert "42 curriculum" in renderer.render()
-    assert "Advance the simulation one turn at a time" not in renderer.render()
+    assert step_help not in renderer.render()

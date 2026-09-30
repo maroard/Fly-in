@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from tuiloom import ContentPanel, TerminalApp, TerminalMenu, style
+from tuiloom import ContentPanel, TerminalApp, TerminalMenu, TickHandle, style
 
 from src.ui.menus.main_menu import build_main_menu
 from src.ui.menus.map_menu import build_map_menu
@@ -10,10 +10,12 @@ from src.parsing.map_config import MapConfig
 from src.domain.graph import Graph
 from src.rendering.renderer import Renderer
 from src.simulation.simulator import Simulator
+from src.simulation.playback import Playback
+from src.pathfinding.routing_mode import RoutingMode
 
 
-type SimulationMode = Literal["one_shot", "step_by_step"]
-type SimulationSpeed = Literal["low", "medium", "high", "flash"]
+SimulationMode = Literal["one_shot", "step_by_step"]
+SimulationSpeed = Literal["low", "medium", "high", "custom"]
 
 
 class Application:
@@ -28,10 +30,24 @@ class Application:
 
         self.graph_panel: ContentPanel | None = None
         self.output_panel: ContentPanel | None = None
+        self.info_panel: ContentPanel | None = None
+        self.playback: Playback | None = None
+        self.playback_tick: TickHandle | None = None
         self.simulation_mode: SimulationMode = "one_shot"
-        self.simulation_speed: SimulationSpeed | None = "medium"
+        self.simulation_speed: SimulationSpeed = "medium"
+        self.custom_seconds = 1.0
+        self.drones_routing_mode: RoutingMode = "single-path"
 
         self._build_ui()
+
+    @property
+    def seconds_per_movement(self) -> float:
+        return {
+            "low": 2.0,
+            "medium": 1.0,
+            "high": 0.4,
+            "custom": self.custom_seconds,
+        }[self.simulation_speed]
 
     def _build_ui(self) -> None:
         self.terminal_app: TerminalApp = TerminalApp(
@@ -68,7 +84,7 @@ class Application:
             key="step_by_step",
             text=(
                 f"{style("Step by step", bold=True)}: "
-                "Advance the simulation one turn at a time."
+                "Advance the simulation one movement at a time."
             )
         )
 

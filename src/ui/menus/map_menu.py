@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 
-from tuiloom import CommandContext, ScreenContext, TerminalMenu
+from tuiloom import ChoiceContext, ChoiceOption, MenuDisplay, TerminalMenu
 
 from src.parsing.parser import Parser
 from src.domain.graph import Graph
@@ -18,35 +18,41 @@ def build_map_menu(application: Application) -> TerminalMenu:
     app = application.terminal_app
     menu = TerminalMenu(
         app,
-        ScreenContext(
+        MenuDisplay(
             menu_name="maps",
-            title="Map Categories",
-            text="Please select a map category:",
+            title="Map Menu",
+            text="Please select a category and map:",
             width=40
-        )
+        ),
+        presentation="overlay"
     )
+
+    category_order = {
+        "easy": 0,
+        "medium": 1,
+        "hard": 2,
+        "challenger": 3,
+    }
 
     map_folders = sorted(
-        path for path in Path("maps").iterdir() if path.is_dir()
-    )
-    for folder in map_folders:
-        category_menu = TerminalMenu(
-            app,
-            ScreenContext(
-                menu_name=f"Category:{folder.name}",
-                title=folder.name.capitalize(),
-                text="Please select a map:",
-                width=40
-            )
+        (
+            path
+            for path in Path("maps").iterdir()
+            if path.is_dir()
+        ),
+        key=lambda path: category_order.get(
+            path.name.lower(),
+            len(category_order),
         )
+    )
 
-        map_screen(category_menu, folder, application)
-        menu.add_menu(category_menu, folder.name.capitalize())
+    for folder in map_folders:
+        add_map_category_choice(menu, folder, application)
 
     return menu
 
 
-def map_screen(
+def add_map_category_choice(
     menu: TerminalMenu,
     category_path: Path,
     application: Application,
@@ -54,27 +60,44 @@ def map_screen(
     maps = sorted(
         path for path in category_path.iterdir() if path.is_file()
     )
-    for map_path in maps:
-        def select(
-            context: CommandContext,
-            selected_map: Path = map_path
-        ) -> None:
-            application.map_path = selected_map
-            application.parser = Parser(selected_map)
-            application.map_config = application.parser.process()
-            application.graph = Graph(application.map_config)
-            application.renderer = Renderer(application.graph)
-            application.simulator = None
-            if application.graph_panel is not None:
-                application.graph_panel.remove()
-            if application.output_panel is not None:
-                application.output_panel.remove()
-            application.graph_panel = None
-            application.output_panel = None
 
-            application.main_menu.screen_context.text = (
-                f"Current map: {category_path.name}/{selected_map.name}"
-            )
-            context.app.reset_to(application.main_menu)
+    if not maps:
+        return
 
-        menu.add_command(label=map_path.name, behavior=select)
+    def select(context: ChoiceContext) -> None:
+        selected_map = maps[context.index]
+        application.map_path = selected_map
+        application.parser = Parser(selected_map)
+        application.map_config = application.parser.process()
+        application.graph = Graph(application.map_config)
+        application.renderer = Renderer(application.graph)
+        application.simulator = None
+        application.playback = None
+        if application.playback_tick is not None:
+            application.playback_tick.cancel()
+            application.playback_tick = None
+
+        if application.graph_panel is not None:
+            application.graph_panel.remove()
+        if application.output_panel is not None:
+            application.output_panel.remove()
+        if application.info_panel is not None:
+            application.info_panel.remove()
+        application.graph_panel = None
+        application.output_panel = None
+        application.info_panel = None
+
+        application.main_menu.refresh_status_bar()
+        context.app.reset_to(application.main_menu)
+
+    menu.add_choice(
+        label=category_path.name.capitalize(),
+        options=[ChoiceOption(map_path.name) for map_path in maps],
+        on_select=select,
+        vertical=True,
+        selected_index=(
+            maps.index(application.map_path)
+            if application.map_path in maps
+            else None
+        ),
+    )

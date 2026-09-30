@@ -25,7 +25,6 @@ class Parser:
         connections: list[Connection] = []
 
         seen_connections: set[tuple[str, str]] = set()
-        note_lines: list[str] = []
         first_data_line_seen = False
 
         for line_number, raw_line in enumerate(self.content, start=1):
@@ -35,10 +34,6 @@ class Parser:
                 continue
 
             if line.startswith("#"):
-                if not first_data_line_seen:
-                    note_lines.append(
-                        line.removeprefix("#").lstrip()
-                    )
                 continue
 
             key, value = self._split_line(
@@ -151,7 +146,6 @@ class Parser:
             end_hub=end_hub,
             zones=zones,
             connections=connections,
-            note="\n".join(note_lines),
         )
 
     def _get_zone(

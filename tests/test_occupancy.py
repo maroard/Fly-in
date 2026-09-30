@@ -41,7 +41,7 @@ def test_refresh_replaces_counts_from_current_drone_positions() -> None:
     assert occupancy.connections == {}
 
 
-def test_simulator_updates_shared_occupancy_after_arrival() -> None:
+def test_simulator_updates_occupancy_after_arrival() -> None:
     from src.domain.graph import Graph
     from src.parsing.map_config import MapConfig
     from src.simulation.simulator import Simulator
@@ -50,20 +50,17 @@ def test_simulator_updates_shared_occupancy_after_arrival() -> None:
     b = Zone(name="b", x=1, y=0)
     link = Connection("a", "b", ConnectionMetadata())
     graph = Graph(MapConfig(2, a, b, {"a": a, "b": b}, [link]))
-    occupancy = Occupancy({}, {})
-    simulator = Simulator(graph, occupancy=occupancy)
-    assert simulator.occupancy is occupancy
+    simulator = Simulator(graph)
+    occupancy = simulator.occupancy
     assert occupancy.zone_occupancy("a") == 2
     simulator.state.drones[0].start_transit(link, b)
     simulator.step()
     assert occupancy.zone_occupancy("a") == 0
     assert occupancy.zone_occupancy("b") == 2
     assert not occupancy.is_connection_occupied("a", "b")
-    assert simulator._get_zone_occupancy(a) == 0
-    assert simulator._get_connection_occupancy(link) == 0
 
 
-def test_run_shares_occupancy_with_renderer() -> None:
+def test_run_tracks_occupancy_in_simulator() -> None:
     from src.application import Application
     from src.domain.graph import Graph
     from src.parsing.map_config import MapConfig
@@ -85,19 +82,18 @@ def test_run_shares_occupancy_with_renderer() -> None:
     context = CommandContext(
         application.terminal_app, application.main_menu, command, None
     )
-    command.behavior(context)
+    command.callback(context)
     simulator = application.simulator
     assert simulator is not None
-    assert application.renderer.occupancy is simulator.occupancy
-    assert application.renderer.occupancy.zone_occupancy("b") == 2
-    assert len(simulator.state.turns) == 1
-    assert len(simulator.state.turns[0].movements) == 2
+    assert simulator.occupancy.zone_occupancy("b") == 2
+    assert len(simulator.state.turns) == 2
+    assert all(len(turn.movements) == 1 for turn in simulator.state.turns)
     assert application.renderer.render(ContentSize(40, 20))
-    command.behavior(context)
-    assert application.simulator is simulator
+    command.callback(context)
+    assert application.simulator is not simulator
 
 
-def test_run_without_path_leaves_occupancy_unchanged() -> None:
+def test_run_without_path_leaves_simulator_unset() -> None:
     from src.application import Application
     from src.domain.graph import Graph
     from src.parsing.map_config import MapConfig
@@ -111,9 +107,9 @@ def test_run_without_path_leaves_occupancy_unchanged() -> None:
         Graph(MapConfig(1, a, b, {"a": a, "b": b}, []))
     )
     command = application.main_menu.commands[0]
-    command.behavior(CommandContext(
+    command.callback(CommandContext(
         application.terminal_app, application.main_menu, command, None
     ))
     assert application.simulator is None
-    assert application.renderer.occupancy.zones == {}
-    assert application.main_menu._alert_text == "No valid path for this graph."
+    assert application.main_menu._alert is not None
+    assert application.main_menu._alert.text == "No valid path for this graph."

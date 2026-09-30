@@ -11,4 +11,3 @@ class MapConfig:
     end_hub: Zone
     zones: dict[str, Zone]
     connections: list[Connection]
-    note: str = ""
