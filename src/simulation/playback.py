@@ -97,7 +97,44 @@ class Playback:
             ]
             self._active = [self._motion(movement)]
             self._active_since = self.last_elapsed
+            self._replay_locations = None
             return True
+
+    @property
+    def current_movement_index(self) -> int:
+        """Index of the active or waiting movement (last row when done)."""
+        with self._lock:
+            return min(
+                self._next_movement,
+                len(self.turns[self.turn_index].movements) - 1,
+            )
+
+    def previous_movement(self) -> bool:
+        """Cancel an active step, or undo the last completed step."""
+        with self._lock:
+            if self.mode != "step_by_step" or not self.turns:
+                return False
+            if not self._active and self.completed_movements == 0:
+                return False
+            if not self._active:
+                self.completed_movements -= 1
+            self._active = []
+            self._replay_locations = None
+            self.finished = False
+            self.selected_drone_id = None
+            locations = self._initial_locations()
+            remaining = self.completed_movements
+            for turn_index, turn in enumerate(self.turns):
+                for movement_index, movement in enumerate(turn.movements):
+                    if remaining == 0:
+                        self.turn_index = turn_index
+                        self._next_movement = movement_index
+                        self._locations = locations
+                        return True
+                    drone_id, _, end = self._motion(movement, locations)
+                    locations[drone_id] = end
+                    remaining -= 1
+            return False
 
     def advance(self, elapsed: float) -> bool:
         """Advance visible motion; report a page change."""

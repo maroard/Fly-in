@@ -45,6 +45,82 @@ def build_main_menu(application: Application) -> TerminalMenu:
 
     shown_turn_index = 0
 
+    def update_layout() -> None:
+        graph = application.graph_panel
+        output = application.simulation_panel
+        stats = application.stats_panel
+        if graph is None or output is None or stats is None:
+            return
+        layout = [[graph, output]]
+        if application.movement_panel is not None:
+            layout.append([graph, application.movement_panel])
+        layout.append([graph, stats])
+        menu.set_content_layout(layout)
+
+    def clear_movement_panel() -> None:
+        if application.movement_panel is not None:
+            application.movement_panel.remove()
+            application.movement_panel = None
+            update_layout()
+
+    def update_movement_panel(playback: Playback) -> None:
+        snapshot = playback.snapshot()
+        drone_id = snapshot.selected_drone_id
+        if drone_id is None:
+            clear_movement_panel()
+            return
+        visual = snapshot.positions[drone_id]
+        location = visual.end if visual.progress == 1 else visual.start
+        lines = [f"Drone: D-{drone_id}"]
+        if location.zone is not None:
+            zone = playback.graph.zones[location.zone]
+            lines.append(f"Zone: {zone.name}")
+            metadata = zone.metadata.model_dump()
+        else:
+            connection = next(
+                connection for connection in playback.graph.connections
+                if f"{connection.zone_name1}-{connection.zone_name2}"
+                == location.connection
+            )
+            lines.append(f"Connection: {location.connection}")
+            lines.append(f"Direction: {location.source} → {location.target}")
+            metadata = connection.metadata.model_dump()
+        lines.append("Metadata:")
+        lines.extend(
+            f"{'╰─' if index == len(metadata) - 1 else '├─'} "
+            f"{key}: {value if value is not None else 'None'}"
+            for index, (key, value) in enumerate(metadata.items())
+        )
+        others = []
+        for other_id, other_visual in snapshot.positions.items():
+            if other_id == drone_id:
+                continue
+            other = (
+                other_visual.end if other_visual.progress == 1
+                else other_visual.start
+            )
+            if (
+                location.zone is not None and other.zone == location.zone
+                or location.connection is not None
+                and other.connection == location.connection
+            ):
+                others.append(f"D-{other_id}")
+        if others:
+            lines.append(f"Other drones: {', '.join(others)}")
+        content = ScreenContent.lines(lines)
+        if application.movement_panel is None:
+            application.movement_panel = menu.add_content_panel(
+                content,
+                description="Movement",
+                width_weight=2,
+                padding_top=1,
+                padding_left=1,
+                padding_right=1,
+            )
+            update_layout()
+        else:
+            application.movement_panel.set_content(content)
+
     def render_status(width: int) -> str:
         playback = application.playback
         if application.renderer is None:
@@ -63,21 +139,18 @@ def build_main_menu(application: Application) -> TerminalMenu:
         if menu.content_panels:
             controls.append("[Tab] Focus")
         if (
-            focused is application.output_panel
-            and playback is not None
-            and playback.finished
-        ):
-            controls.insert(0, "[↑/↓] Locate")
-        if (
             playback is not None
             and playback.mode == "step_by_step"
             and not playback.finished
-            and focused in (application.graph_panel, application.output_panel)
+            and focused in (
+                application.graph_panel, application.simulation_panel
+            )
         ):
-            controls.insert(0, "[Space] Next move")
+            controls.insert(0, "[Backspace] Previous move")
+            controls.insert(1, "[Space] Next move")
         if (
             playback is not None and playback.finished
-            and focused is application.output_panel
+            and focused is application.simulation_panel
         ):
             controls.insert(0, "[Shift+←/→] Turns")
 
@@ -87,47 +160,47 @@ def build_main_menu(application: Application) -> TerminalMenu:
             f" {state} │ Map: {map_name}"
             f" │ {' │ '.join(controls)} │ [Esc] Quit"
         )
-        compact = f" {state} │ {' │ '.join(controls)} │ [Esc] Quit"
-        if display_width(full) <= width:
-            return full
+        medium = f" {state} │ {' │ '.join(controls)} │ [Esc] Quit"
+        compact = f"{' │ '.join(controls)} │ [Esc] Quit"
+        for text in (full, medium):
+            if display_width(text) <= width:
+                return text
         return compact
 
     menu.set_status_bar(StatusBar.responsive(render_status))
 
     def turn_rows(playback: Playback) -> list[str | SelectableItem]:
         turn = playback.turns[shown_turn_index]
+        current_index = playback.current_movement_index
         return [
             SelectableItem(
                 f"D-{movement.drone_id}-{movement.destination}",
                 value=movement.drone_id,
                 key=movement.drone_id,
-                enabled=playback.finished,
+                enabled=playback.finished or (
+                    playback.mode == "step_by_step"
+                    and index == current_index
+                ),
             )
-            for movement in turn.movements
+            for index, movement in enumerate(turn.movements)
         ]
 
     def turn_title(playback: Playback) -> str:
         turn = playback.turns[shown_turn_index]
         return style(f"Turn {turn.number}:", bold=True)
 
-    def info_lines(playback: Playback) -> list[str]:
+    def stats_lines(playback: Playback) -> list[str]:
         snapshot = playback.snapshot()
         delivered = sum(
             visual.end.zone == playback.graph.end_hub.name
             and visual.progress == 1
             for visual in snapshot.positions.values()
         )
-        previous = sum(
-            len(turn.movements)
-            for turn in playback.turns[:playback.turn_index]
-        )
-        moved_this_turn = snapshot.completed_movements - previous
         current = playback.turns[playback.turn_index]
         lines = [
-            f"Turn: {playback.turn_index + 1}/{len(playback.turns)}",
-            f"Delivered: {delivered}/{playback.graph.nb_drones}",
-            f"Movements: {moved_this_turn}/{len(current.movements)}",
-            f"Total: {len(playback.turns)}t",
+            f"Current turn: {playback.turn_index + 1}/{len(playback.turns)}",
+            f"╰─ Number of movements: {len(current.movements)}",
+            f"Drones delivered: {delivered}/{playback.graph.nb_drones}",
         ]
         if snapshot.finished:
             arrivals = [
@@ -138,7 +211,8 @@ def build_main_menu(application: Application) -> TerminalMenu:
             ]
             average = sum(arrivals) / len(arrivals) if arrivals else 0.0
             lines.extend([
-                f"Average turns per drone: {average:.1f}t",
+                "\n",
+                f"Average turns per drone: {average:.1f}",
                 f"Total path cost: {sum(len(turn.movements)
                                         for turn in playback.turns)}",
             ])
@@ -147,33 +221,39 @@ def build_main_menu(application: Application) -> TerminalMenu:
     def update_turn_panel(
         playback: Playback, *, select_first: bool = False
     ) -> None:
-        panel = application.output_panel
+        panel = application.simulation_panel
         if panel is None:
             return
         panel.set_selection_callback(None)
         panel.set_header(turn_title(playback))
         panel.set_content(ScreenContent.selectable(turn_rows(playback)))
-        if playback.finished:
-            panel.clear_selection()
+        panel.clear_selection()
         panel.set_selection_callback(on_selection_change)
         playback.clear_replay()
+        clear_movement_panel()
         if select_first:
             panel.select_item(0)
 
-    def update_info_panel(playback: Playback) -> None:
-        if application.info_panel is not None:
-            application.info_panel.set_content(
-                ScreenContent.lines(info_lines(playback))
+    def update_stats_panel(playback: Playback) -> None:
+        if application.stats_panel is not None:
+            application.stats_panel.set_content(
+                ScreenContent.lines(stats_lines(playback))
             )
 
     def on_selection_change(context: SelectionChangeContext) -> None:
         playback = application.playback
-        if playback is None or not playback.finished:
+        if playback is None:
             return
         if context.index is None:
             playback.clear_replay()
-        else:
+        elif playback.finished:
             playback.select_movement(shown_turn_index, context.index)
+        else:
+            movement = playback.turns[shown_turn_index].movements[
+                context.index
+            ]
+            playback.select_drone(movement.drone_id)
+        update_movement_panel(playback)
 
     def change_turn(context: PanelCommandContext, step: int) -> None:
         nonlocal shown_turn_index
@@ -191,7 +271,40 @@ def build_main_menu(application: Application) -> TerminalMenu:
     def start_step(context: PanelCommandContext) -> None:
         playback = application.playback
         if playback is not None and playback.start_next_movement():
+            sync_step_selection(playback)
             context.menu.refresh_status_bar()
+
+    def sync_step_selection(playback: Playback) -> None:
+        nonlocal shown_turn_index
+        panel = application.simulation_panel
+        if panel is None or not playback.turns:
+            return
+        if shown_turn_index != playback.turn_index:
+            shown_turn_index = playback.turn_index
+            update_turn_panel(playback)
+        index = playback.current_movement_index
+        # Automatic selection follows live playback, including the final row.
+        # It must not invoke the historical replay callback when finished.
+        panel.set_selection_callback(None)
+        panel.set_content(ScreenContent.selectable(turn_rows(playback)))
+        panel.select_item(index)
+        panel.set_selection_callback(on_selection_change)
+        playback.clear_replay()
+        playback.select_drone(playback.turns[shown_turn_index].movements[
+            index
+        ].drone_id)
+        update_movement_panel(playback)
+
+    def previous_step(context: CommandContext) -> None:
+        playback = application.playback
+        if playback is not None and playback.previous_movement():
+            sync_step_selection(playback)
+            update_stats_panel(playback)
+            menu.refresh_status_bar()
+
+    application.terminal_app.add_global_command(
+        KeyBinding("backspace"), "Previous move", previous_step,
+    )
 
     def run_simulation(context: CommandContext) -> None:
         nonlocal shown_turn_index
@@ -215,6 +328,7 @@ def build_main_menu(application: Application) -> TerminalMenu:
             application.simulation_mode, application.seconds_per_movement,
         )
         application.playback = playback
+        clear_movement_panel()
         shown_turn_index = 0
         context.menu.hide_menu()
 
@@ -228,51 +342,72 @@ def build_main_menu(application: Application) -> TerminalMenu:
         )
         if application.graph_panel is None:
             application.graph_panel = context.menu.add_content_panel(
-                graph_content, description="Graph", width_weight=3,
+                graph_content,
+                description="Graph",
+                width_weight=3,
+                padding_top=1,
+                padding_bottom=1,
+                padding_left=1,
+                padding_right=1
             )
         else:
             application.graph_panel.set_content(graph_content)
 
         output_content = ScreenContent.selectable(turn_rows(playback))
-        if application.output_panel is None:
-            application.output_panel = context.menu.add_content_panel(
-                output_content, description="Simulation", width_weight=2,
-                selection_style="reverse", header=turn_title(playback),
+        if application.simulation_panel is None:
+            application.simulation_panel = context.menu.add_content_panel(
+                output_content,
+                description="Simulation",
+                height_weight=2,
+                width_weight=2,
+                selection_style="reverse",
+                header=turn_title(playback),
+                padding_top=1,
+                padding_left=1,
+                padding_right=1
             )
         else:
-            application.output_panel.set_selection_callback(None)
-            application.output_panel.set_header(turn_title(playback))
-            application.output_panel.set_content(output_content)
-        application.output_panel.set_selection_callback(on_selection_change)
+            application.simulation_panel.set_selection_callback(None)
+            application.simulation_panel.set_header(turn_title(playback))
+            application.simulation_panel.set_content(output_content)
+        application.simulation_panel.clear_selection()
+        application.simulation_panel.set_selection_callback(
+            on_selection_change
+        )
 
-        info_content = ScreenContent.lines(info_lines(playback))
-        if application.info_panel is None:
-            application.info_panel = context.menu.add_content_panel(
-                info_content, description="Info", width_weight=1,
+        stats_content = ScreenContent.lines(stats_lines(playback))
+        if application.stats_panel is None:
+            application.stats_panel = context.menu.add_content_panel(
+                stats_content,
+                description="Stats",
+                padding_top=1,
+                padding_left=1,
+                padding_right=1
             )
         else:
-            application.info_panel.set_content(info_content)
+            application.stats_panel.set_content(stats_content)
 
-        for panel in (application.graph_panel, application.output_panel):
+        for panel in (application.graph_panel, application.simulation_panel):
             for command in panel.key_commands:
                 panel.remove_key_command(command)
         if playback.mode == "step_by_step":
-            for panel in (application.graph_panel, application.output_panel):
+            for panel in (
+                application.graph_panel, application.simulation_panel
+            ):
                 panel.add_key_command(
                     KeyBinding(" "), "Next move", start_step
                 )
-        application.output_panel.add_key_command(
+        application.simulation_panel.add_key_command(
             KeyBinding("left", shift=True), "Previous turn",
             lambda panel_context: change_turn(panel_context, -1),
         )
-        application.output_panel.add_key_command(
+        application.simulation_panel.add_key_command(
             KeyBinding("right", shift=True), "Next turn",
             lambda panel_context: change_turn(panel_context, 1),
         )
-        context.menu.set_content_layout([
-            [application.graph_panel, application.output_panel],
-            [application.graph_panel, application.info_panel],
-        ])
+        update_layout()
+        if playback.mode == "step_by_step":
+            sync_step_selection(playback)
 
         last_completed = 0
 
@@ -289,7 +424,11 @@ def build_main_menu(application: Application) -> TerminalMenu:
                 or playback.completed_movements != last_completed
             ):
                 last_completed = playback.completed_movements
-                update_info_panel(playback)
+                if playback.mode == "step_by_step":
+                    sync_step_selection(playback)
+                update_stats_panel(playback)
+                if application.movement_panel is not None:
+                    update_movement_panel(playback)
                 context.menu.refresh_status_bar()
 
         application.playback_tick = context.menu.add_tick_callback(

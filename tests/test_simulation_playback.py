@@ -54,6 +54,63 @@ def test_step_mode_waits_for_each_space() -> None:
     assert playback.finished
 
 
+def test_previous_step_cancels_animation_and_crosses_turns() -> None:
+    playback = Playback(graph(), [
+        Turn(1, [Movement(1, "start-waypoint1")]),
+        Turn(2, [Movement(1, "waypoint1"), Movement(2, "waypoint1")]),
+    ], "step_by_step", 1.0)
+    initial = playback.snapshot().positions
+    assert not playback.previous_movement()
+    assert playback.start_next_movement()
+    playback.advance(0.5)
+    assert playback.previous_movement()
+    assert playback.completed_movements == 0
+    assert playback.snapshot().positions == initial
+    playback.advance(10)
+    assert playback.start_next_movement()
+    playback.advance(11)
+    midpoint = playback.snapshot().positions
+    assert playback.turn_index == 1
+    assert playback.previous_movement()
+    assert playback.turn_index == 0
+    assert playback.current_movement_index == 0
+    assert playback.snapshot().positions == initial
+    assert playback.start_next_movement()
+    playback.advance(12)
+    assert playback.snapshot().positions == midpoint
+    assert playback.start_next_movement()
+    playback.advance(13)
+    assert playback.current_movement_index == 1
+    assert playback.previous_movement()
+    assert playback.snapshot().positions == midpoint
+    assert playback.completed_movements == 1
+    assert playback.current_movement_index == 0
+
+
+def test_previous_step_after_finish_discards_replay_and_can_resume() -> None:
+    playback = Playback(graph(), [Turn(1, [
+        Movement(1, "waypoint1"), Movement(2, "waypoint1"),
+    ])], "step_by_step", 1.0)
+    assert playback.start_next_movement()
+    playback.advance(1)
+    assert playback.start_next_movement()
+    playback.advance(2)
+    final = playback.snapshot().positions
+    playback.select_movement(0, 0)
+    assert playback.previous_movement()
+    assert not playback.finished
+    assert playback.completed_movements == 1
+    assert playback.current_movement_index == 1
+    assert playback.snapshot().positions[2].end.zone == "start"
+    assert playback.start_next_movement()
+    playback.advance(3)
+    assert playback.finished
+    assert playback.snapshot().positions == final
+    automatic = Playback(graph(), playback.turns, "one_shot", 1)
+    automatic.advance(0)
+    assert not automatic.previous_movement()
+
+
 def test_restricted_move_stops_at_midpoint_until_next_turn() -> None:
     from src.domain.connection import Connection, ConnectionMetadata
     from src.domain.zone import Zone, ZoneMetadata

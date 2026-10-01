@@ -16,7 +16,6 @@ from src.simulation.playback import Location, PlaybackSnapshot, VisualDrone
 class Renderer:
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
-        self.padding: int = 2
 
     def render(
         self,
@@ -30,8 +29,8 @@ class Renderer:
             max_x=max(zone.x for zone in self.graph.zones.values()),
             min_y=min(zone.y for zone in self.graph.zones.values()),
             max_y=max(zone.y for zone in self.graph.zones.values()),
-            width=size.width - 2 * self.padding,
-            height=size.height - 2 * self.padding,
+            width=size.width,
+            height=size.height,
         )
 
         self._draw_connections(canvas, projector)
@@ -159,6 +158,6 @@ class Renderer:
     ) -> tuple[int, int]:
         screen_x, screen_y = projector.project(x, y)
         return (
-            screen_x + self.padding,
-            screen_y + self.padding,
+            screen_x,
+            screen_y,
         )

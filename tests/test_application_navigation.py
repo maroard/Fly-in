@@ -167,8 +167,8 @@ def test_repeated_simulations_reuse_three_panels_and_preserve_layout() -> None:
     select_linear_map(application)
     activate(application.main_menu, "Run simulation")
     graph = application.graph_panel
-    output = application.output_panel
-    info = application.info_panel
+    output = application.simulation_panel
+    info = application.stats_panel
     assert graph is not None and output is not None and info is not None
     assert graph.description == "Graph"
     assert output.description == "Simulation"
@@ -181,8 +181,8 @@ def test_repeated_simulations_reuse_three_panels_and_preserve_layout() -> None:
     activate(application.main_menu, "Run simulation")
 
     assert application.graph_panel is graph
-    assert application.output_panel is output
-    assert application.info_panel is info
+    assert application.simulation_panel is output
+    assert application.stats_panel is info
     assert application.main_menu.content_panels == (graph, output, info)
     assert (graph.width_weight, graph.min_height) == (4, 2)
     assert (output.width_weight, output.max_height) == (2, 6)
@@ -193,8 +193,8 @@ def test_panel_sizing_gives_graph_more_width_than_side_panels() -> None:
     select_linear_map(application)
     activate(application.main_menu, "Run simulation")
     graph = application.graph_panel
-    output = application.output_panel
-    info = application.info_panel
+    output = application.simulation_panel
+    info = application.stats_panel
     assert graph is not None and output is not None and info is not None
     menu = application.main_menu
     menu_renderer = MenuRenderer(menu)

@@ -79,13 +79,16 @@ def add_map_category_choice(
 
         if application.graph_panel is not None:
             application.graph_panel.remove()
-        if application.output_panel is not None:
-            application.output_panel.remove()
-        if application.info_panel is not None:
-            application.info_panel.remove()
+        if application.simulation_panel is not None:
+            application.simulation_panel.remove()
+        if application.stats_panel is not None:
+            application.stats_panel.remove()
+        if application.movement_panel is not None:
+            application.movement_panel.remove()
         application.graph_panel = None
-        application.output_panel = None
-        application.info_panel = None
+        application.simulation_panel = None
+        application.stats_panel = None
+        application.movement_panel = None
 
         application.main_menu.refresh_status_bar()
         context.app.reset_to(application.main_menu)

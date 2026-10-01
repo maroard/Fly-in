@@ -32,7 +32,7 @@ def start_simulation(application: Application) -> None:
 
 
 def panel_lines(application: Application) -> list[str]:
-    panel = application.output_panel
+    panel = application.simulation_panel
     assert panel is not None
     return [
         row.content if isinstance(row, SelectableItem) else row
@@ -50,7 +50,7 @@ def status(application: Application, width: int = 180) -> str:
 
 def finish_step_playback(application: Application) -> None:
     menu = application.main_menu
-    panel = application.output_panel
+    panel = application.simulation_panel
     simulator = application.simulator
     handle = application.playback_tick
     assert panel is not None and simulator is not None and handle is not None
@@ -79,11 +79,12 @@ def test_step_by_step_shows_one_turn_and_one_movement_per_line() -> None:
         f"D-{move.drone_id}-{move.destination}"
         for move in first.movements
     ]
-    panel = application.output_panel
+    panel = application.simulation_panel
     assert panel is not None
     assert panel.header == style("Turn 1:", bold=True)
     assert "[Space] Next move" in status(application)
     assert "[Space] Next move" in status(application, width=42)
+    assert "[Shift+Space] Previous move" in status(application)
     assert "[↑/↓] Locate" not in status(application)
 
 
@@ -91,7 +92,7 @@ def test_turn_title_uses_the_whole_panel_width() -> None:
     application = Application()
     start_simulation(application)
     menu = application.main_menu
-    panel = application.output_panel
+    panel = application.simulation_panel
     assert panel is not None
     renderer = TerminalRenderer(
         menu=menu, menu_renderer=MenuRenderer(menu), content_spacing=True
@@ -111,7 +112,7 @@ def test_shift_arrows_browse_turns_after_playback() -> None:
     application.simulation_mode = "step_by_step"
     start_simulation(application)
     menu = application.main_menu
-    panel = application.output_panel
+    panel = application.simulation_panel
     simulator = application.simulator
     assert panel is not None and simulator is not None
     assert len(panel.key_commands) == 3
@@ -122,7 +123,10 @@ def test_shift_arrows_browse_turns_after_playback() -> None:
     finish_step_playback(application)
     assert application.playback is not None and application.playback.finished
     assert panel.header == style("Turn 4:", bold=True)
-    assert panel.selected_item is None
+    assert panel.selected_index == len(
+        simulator.state.turns[-1].movements
+    ) - 1
+    assert application.movement_panel is not None
     assert all(row.enabled for row in panel.content._selectable_items())
     assert "[Shift+←/→] Turns" in status(application)
     assert "[Shift+←/→] Turns" in status(application, width=42)
@@ -140,7 +144,7 @@ def test_switching_to_one_shot_removes_space_command() -> None:
     application = Application()
     application.simulation_mode = "step_by_step"
     start_simulation(application)
-    panel = application.output_panel
+    panel = application.simulation_panel
     assert panel is not None
     assert len(panel.key_commands) == 3
     application.simulation_mode = "one_shot"
@@ -149,9 +153,41 @@ def test_switching_to_one_shot_removes_space_command() -> None:
         item for item in menu.commands if item.label == "Run simulation"
     )
     command.callback(CommandContext(menu.app, menu, command, None))
-    assert application.output_panel is panel
+    assert application.simulation_panel is panel
     assert len(panel.key_commands) == 2
     assert panel.content._kind == "selectable"
     assert application.graph_panel is not None
     assert application.graph_panel.key_commands == ()
     assert "[Space]" not in status(application)
+
+
+def test_global_previous_resumes_after_finished_historical_selection() -> None:
+    application = Application()
+    application.simulation_mode = "step_by_step"
+    start_simulation(application)
+    finish_step_playback(application)
+    menu = application.main_menu
+    panel = application.simulation_panel
+    playback = application.playback
+    handle = application.playback_tick
+    assert panel is not None and playback is not None and handle is not None
+    final_positions = playback.snapshot().positions
+    total = playback.completed_movements
+    menu._handle_event(InputEvent(KeyBinding("left", shift=True)))
+    assert "Turn 3:" in (panel.header or "")
+    menu._focused_panel = application.stats_panel
+    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
+    assert not playback.finished
+    assert playback.completed_movements == total - 1
+    assert "Turn 4:" in (panel.header or "")
+    assert panel.selected_index == 0
+    assert playback.snapshot().positions[2].end.zone == "waypoint2"
+    assert "[Shift+Space] Previous move" in status(application)
+    menu._focused_panel = application.graph_panel
+    menu._handle_event(InputEvent(KeyBinding(" ")))
+    elapsed = playback.last_elapsed + application.seconds_per_movement
+    handle.callback(AnimationFrame(elapsed, round(elapsed * handle.fps)))
+    assert playback.finished
+    assert playback.completed_movements == total
+    assert playback.snapshot().positions == final_positions
+    assert application.movement_panel is not None

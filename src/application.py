@@ -11,6 +11,7 @@ from src.domain.graph import Graph
 from src.rendering.renderer import Renderer
 from src.simulation.simulator import Simulator
 from src.simulation.playback import Playback
+from src.ui.terminal_app import KeyboardTerminalApp
 from src.pathfinding.routing_mode import RoutingMode
 
 
@@ -29,8 +30,9 @@ class Application:
         self.simulator: Simulator | None = None
 
         self.graph_panel: ContentPanel | None = None
-        self.output_panel: ContentPanel | None = None
-        self.info_panel: ContentPanel | None = None
+        self.simulation_panel: ContentPanel | None = None
+        self.movement_panel: ContentPanel | None = None
+        self.stats_panel: ContentPanel | None = None
         self.playback: Playback | None = None
         self.playback_tick: TickHandle | None = None
         self.simulation_mode: SimulationMode = "one_shot"
@@ -50,7 +52,7 @@ class Application:
         }[self.simulation_speed]
 
     def _build_ui(self) -> None:
-        self.terminal_app: TerminalApp = TerminalApp(
+        self.terminal_app: TerminalApp = KeyboardTerminalApp(
             style(
                 "Fly-in",
                 bold=True,
