@@ -62,7 +62,11 @@ def build_main_menu(application: Application) -> TerminalMenu:
         controls = ["[M] Menu"]
         if menu.content_panels:
             controls.append("[Tab] Focus")
-        if focused is application.output_panel and playback is not None:
+        if (
+            focused is application.output_panel
+            and playback is not None
+            and playback.finished
+        ):
             controls.insert(0, "[↑/↓] Locate")
         if (
             playback is not None
@@ -97,6 +101,7 @@ def build_main_menu(application: Application) -> TerminalMenu:
                 f"D-{movement.drone_id}-{movement.destination}",
                 value=movement.drone_id,
                 key=movement.drone_id,
+                enabled=playback.finished,
             )
             for movement in turn.movements
         ]
@@ -139,17 +144,21 @@ def build_main_menu(application: Application) -> TerminalMenu:
             ])
         return lines
 
-    def update_turn_panel(playback: Playback) -> None:
+    def update_turn_panel(
+        playback: Playback, *, select_first: bool = False
+    ) -> None:
         panel = application.output_panel
         if panel is None:
             return
+        panel.set_selection_callback(None)
         panel.set_header(turn_title(playback))
         panel.set_content(ScreenContent.selectable(turn_rows(playback)))
-        item = panel.selected_item
-        playback.select_drone(
-            item.value if item is not None and isinstance(item.value, int)
-            else None
-        )
+        if playback.finished:
+            panel.clear_selection()
+        panel.set_selection_callback(on_selection_change)
+        playback.clear_replay()
+        if select_first:
+            panel.select_item(0)
 
     def update_info_panel(playback: Playback) -> None:
         if application.info_panel is not None:
@@ -158,12 +167,13 @@ def build_main_menu(application: Application) -> TerminalMenu:
             )
 
     def on_selection_change(context: SelectionChangeContext) -> None:
-        if application.playback is not None:
-            item = context.item
-            application.playback.select_drone(
-                item.value if item is not None and isinstance(item.value, int)
-                else None
-            )
+        playback = application.playback
+        if playback is None or not playback.finished:
+            return
+        if context.index is None:
+            playback.clear_replay()
+        else:
+            playback.select_movement(shown_turn_index, context.index)
 
     def change_turn(context: PanelCommandContext, step: int) -> None:
         nonlocal shown_turn_index
@@ -175,7 +185,7 @@ def build_main_menu(application: Application) -> TerminalMenu:
         )
         if next_index != shown_turn_index:
             shown_turn_index = next_index
-            update_turn_panel(playback)
+            update_turn_panel(playback, select_first=True)
             menu.refresh_status_bar()
 
     def start_step(context: PanelCommandContext) -> None:
@@ -234,12 +244,6 @@ def build_main_menu(application: Application) -> TerminalMenu:
             application.output_panel.set_header(turn_title(playback))
             application.output_panel.set_content(output_content)
         application.output_panel.set_selection_callback(on_selection_change)
-        selected = application.output_panel.selected_item
-        playback.select_drone(
-            selected.value
-            if selected is not None and isinstance(selected.value, int)
-            else None
-        )
 
         info_content = ScreenContent.lines(info_lines(playback))
         if application.info_panel is None:
@@ -274,11 +278,16 @@ def build_main_menu(application: Application) -> TerminalMenu:
 
         def on_tick(frame: AnimationFrame) -> None:
             nonlocal shown_turn_index, last_completed
+            was_finished = playback.finished
             page_changed = playback.advance(frame.elapsed)
-            if page_changed:
+            just_finished = playback.finished and not was_finished
+            if page_changed or just_finished:
                 shown_turn_index = playback.turn_index
                 update_turn_panel(playback)
-            if page_changed or playback.completed_movements != last_completed:
+            if (
+                page_changed or just_finished
+                or playback.completed_movements != last_completed
+            ):
                 last_completed = playback.completed_movements
                 update_info_panel(playback)
                 context.menu.refresh_status_bar()

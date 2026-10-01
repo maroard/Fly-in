@@ -84,6 +84,7 @@ def test_step_by_step_shows_one_turn_and_one_movement_per_line() -> None:
     assert panel.header == style("Turn 1:", bold=True)
     assert "[Space] Next move" in status(application)
     assert "[Space] Next move" in status(application, width=42)
+    assert "[↑/↓] Locate" not in status(application)
 
 
 def test_turn_title_uses_the_whole_panel_width() -> None:
@@ -121,10 +122,16 @@ def test_shift_arrows_browse_turns_after_playback() -> None:
     finish_step_playback(application)
     assert application.playback is not None and application.playback.finished
     assert panel.header == style("Turn 4:", bold=True)
+    assert panel.selected_item is None
+    assert all(row.enabled for row in panel.content._selectable_items())
     assert "[Shift+←/→] Turns" in status(application)
     assert "[Shift+←/→] Turns" in status(application, width=42)
+    assert "[↑/↓] Locate" in status(application)
+    menu._handle_event(InputEvent(KeyBinding("up")))
+    assert panel.selected_index == 0
     menu._handle_event(InputEvent(KeyBinding("left", shift=True)))
     assert panel.header == style("Turn 3:", bold=True)
+    assert panel.selected_index == 0
     menu._handle_event(InputEvent(KeyBinding("right", shift=True)))
     assert panel.header == style("Turn 4:", bold=True)
 

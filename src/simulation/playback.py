@@ -51,10 +51,8 @@ class Playback:
         self.finished = not turns
         self.last_elapsed = 0.0
         self.selected_drone_id: int | None = None
-        self._locations = {
-            drone_id: Location(zone=graph.start_hub.name)
-            for drone_id in range(1, graph.nb_drones + 1)
-        }
+        self._locations = self._initial_locations()
+        self._replay_locations: dict[int, Location] | None = None
         self._active: list[tuple[int, Location, Location]] = []
         self._active_since = 0.0
         self._next_movement = 0
@@ -64,6 +62,30 @@ class Playback:
     def select_drone(self, drone_id: int | None) -> None:
         with self._lock:
             self.selected_drone_id = drone_id
+
+    def clear_replay(self) -> None:
+        """Show the final state with no highlighted drone."""
+        with self._lock:
+            self._replay_locations = None
+            self.selected_drone_id = None
+
+    def select_movement(self, turn_index: int, movement_index: int) -> None:
+        """Show the state just after one completed movement."""
+        with self._lock:
+            if not self.finished:
+                raise ValueError("Replay needs a finished movement")
+            movement = self.turns[turn_index].movements[movement_index]
+            locations = self._initial_locations()
+            for current_turn_index in range(turn_index + 1):
+                turn = self.turns[current_turn_index]
+                movement_count = len(turn.movements)
+                if current_turn_index == turn_index:
+                    movement_count = movement_index + 1
+                for prior in turn.movements[:movement_count]:
+                    drone_id, _, end = self._motion(prior, locations)
+                    locations[drone_id] = end
+            self._replay_locations = locations
+            self.selected_drone_id = movement.drone_id
 
     def start_next_movement(self) -> bool:
         """Start one waiting movement in step mode; ignore repeated presses."""
@@ -114,11 +136,14 @@ class Playback:
     def snapshot(self) -> PlaybackSnapshot:
         """Copy the visible state for a renderer running on another thread."""
         with self._lock:
+            locations = self._locations
+            if self._replay_locations is not None:
+                locations = self._replay_locations
             positions = {
                 drone_id: VisualDrone(location, location, 1.0)
-                for drone_id, location in self._locations.items()
+                for drone_id, location in locations.items()
             }
-            if self._active:
+            if self._active and self._replay_locations is None:
                 progress = min(1.0, max(
                     0.0,
                     (self.last_elapsed - self._active_since)
@@ -138,8 +163,19 @@ class Playback:
         ]
         self._active_since = elapsed
 
-    def _motion(self, movement: Movement) -> tuple[int, Location, Location]:
-        start = self._locations[movement.drone_id]
+    def _initial_locations(self) -> dict[int, Location]:
+        return {
+            drone_id: Location(zone=self.graph.start_hub.name)
+            for drone_id in range(1, self.graph.nb_drones + 1)
+        }
+
+    def _motion(
+        self, movement: Movement,
+        locations: dict[int, Location] | None = None,
+    ) -> tuple[int, Location, Location]:
+        if locations is None:
+            locations = self._locations
+        start = locations[movement.drone_id]
         if movement.destination in self.graph.zones:
             end = Location(zone=movement.destination)
         else:
