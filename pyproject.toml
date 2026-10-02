@@ -18,6 +18,3 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-
-# [tool.uv.sources]
-# tuiloom = { path = "/home/maroard/Bureau/42/Tuiloom", editable = true }

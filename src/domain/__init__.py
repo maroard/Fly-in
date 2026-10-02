@@ -1,3 +1,5 @@
+"""Expose graph, zone, connection and drone domain objects."""
+
 from src.domain.graph import Graph
 from src.domain.zone import Zone
 from src.domain.connection import Connection

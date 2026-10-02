@@ -1,3 +1,5 @@
+"""Declare the supported drone routing strategies."""
+
 from typing import Literal
 
 

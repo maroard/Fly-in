@@ -99,6 +99,7 @@ def test_run_without_path_leaves_simulator_unset() -> None:
     from src.parsing.map_config import MapConfig
     from src.rendering.renderer import Renderer
     from tuiloom import CommandContext
+    from tuiloom.render.menu_renderer import MenuRenderer
 
     a = Zone(name="a", x=0, y=0)
     b = Zone(name="b", x=1, y=0)
@@ -111,5 +112,20 @@ def test_run_without_path_leaves_simulator_unset() -> None:
         application.terminal_app, application.main_menu, command, None
     ))
     assert application.simulator is None
-    assert application.main_menu._alert is not None
-    assert application.main_menu._alert.text == "No valid path for this graph."
+    assert application.main_menu.display_state.message == (
+        "No valid path for this graph."
+    )
+    assert application.main_menu.menu_visible
+    assert "No valid path for this graph." in MenuRenderer(
+        application.main_menu
+    ).render()
+
+    link = Connection("a", "b", ConnectionMetadata())
+    application.renderer = Renderer(
+        Graph(MapConfig(1, a, b, {"a": a, "b": b}, [link]))
+    )
+    command.callback(CommandContext(
+        application.terminal_app, application.main_menu, command, None
+    ))
+    assert application.simulator is not None
+    assert application.main_menu.display_state.message is None

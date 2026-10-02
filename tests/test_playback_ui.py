@@ -36,8 +36,10 @@ def tick(application: Application, elapsed: float) -> None:
     handle.callback(AnimationFrame(elapsed, round(elapsed * handle.fps)))
 
 
-@pytest.mark.parametrize("raw", ["\x1b[32;2u", "\x7f"])
-def test_decoded_terminal_shortcut_rewinds_from_any_panel(raw: str) -> None:
+@pytest.mark.parametrize("panel_name", ["graph_panel", "simulation_panel"])
+def test_decoded_backspace_rewinds_in_playback_panels(
+    panel_name: str,
+) -> None:
     application = run("step_by_step")
     menu = application.main_menu
     playback = application.playback
@@ -49,10 +51,10 @@ def test_decoded_terminal_shortcut_rewinds_from_any_panel(raw: str) -> None:
     assert playback.completed_movements == 1
     terminal = Terminal()
     key = resolve_sequence(
-        raw, terminal._keymap, terminal._keycodes,
+        "\x7f", terminal._keymap, terminal._keycodes,
         terminal._keymap_prefixes,
     )
-    menu._focused_panel = application.movement_panel
+    menu._focused_panel = getattr(application, panel_name)
     menu._handle_event(normalize_keystroke(key))
     assert playback.completed_movements == 0
     assert playback.snapshot().positions[1].end.zone == "start"
@@ -93,7 +95,54 @@ def test_step_space_starts_one_movement_only_in_graph_or_log_panel() -> None:
     assert playback.completed_movements == 1
 
 
-def test_step_selection_follows_moves_and_global_back_updates_panels() -> None:
+@pytest.mark.parametrize("panel_name", ["graph_panel", "simulation_panel"])
+def test_step_commands_advance_and_rewind_in_same_panel(
+    panel_name: str,
+) -> None:
+    application = run("step_by_step")
+    menu = application.main_menu
+    playback = application.playback
+    panel = application.simulation_panel
+    assert playback is not None and panel is not None
+    menu._focused_panel = getattr(application, panel_name)
+    tick(application, 0)
+    menu._handle_event(InputEvent(KeyBinding(" ")))
+    tick(application, application.seconds_per_movement)
+    assert playback.completed_movements == 1
+    assert "Turn 2:" in (panel.header or "")
+
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
+    assert playback.completed_movements == 0
+    assert "Turn 1:" in (panel.header or "")
+    assert panel.selected_index == 0
+    assert playback.snapshot().positions[1].end.zone == "start"
+
+    menu._handle_event(InputEvent(KeyBinding(" ")))
+    tick(application, 2 * application.seconds_per_movement)
+    assert playback.completed_movements == 1
+
+
+def test_restart_replaces_panel_shortcuts_and_removes_step_commands() -> None:
+    application = run("step_by_step")
+    menu = application.main_menu
+    graph = application.graph_panel
+    panel = application.simulation_panel
+    assert graph is not None and panel is not None
+    command = next(
+        item for item in menu.commands if item.label == "Run simulation"
+    )
+    context = CommandContext(menu.app, menu, command, None)
+    command.callback(context)
+    assert len(graph.key_commands) == 2
+    assert len(panel.key_commands) == 4
+
+    application.simulation_mode = "one_shot"
+    command.callback(context)
+    assert len(graph.key_commands) == 0
+    assert len(panel.key_commands) == 2
+
+
+def test_step_selection_follows_moves_and_backspace_updates_panels() -> None:
     application = run("step_by_step")
     menu = application.main_menu
     playback = application.playback
@@ -116,26 +165,24 @@ def test_step_selection_follows_moves_and_global_back_updates_panels() -> None:
     assert playback.snapshot().selected_drone_id == 2
     details = application.movement_panel
     assert details is not None
-    assert "Drone: D-2" in details.content._static_value()
+    assert "Drone: D2" in details.content._static_value()
 
-    menu._focused_panel = details
-    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
+    menu._focused_panel = application.simulation_panel
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
     assert playback.completed_movements == 1
     assert panel.selected_index == 0
     assert playback.snapshot().selected_drone_id == 1
     assert "Zone: waypoint1" in details.content._static_value()
     assert application.stats_panel is not None
-    assert "Movements: 0/2" in (
+    assert "Number of movements: 2" in "\n".join(
         application.stats_panel.content._static_value()
     )
-    menu.show_menu()
-    menu._focused_panel = None
-    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
     assert playback.completed_movements == 0
     assert "Turn 1:" in (panel.header or "")
     assert panel.selected_index == 0
     assert playback.snapshot().positions[1].end.zone == "start"
-    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
     assert playback.completed_movements == 0
 
 
@@ -175,8 +222,8 @@ def test_step_arrows_are_locked_until_finish_and_again_after_rewind() -> None:
     assert panel.selected_index == 0
     menu._handle_event(InputEvent(KeyBinding("down")))
     assert panel.selected_index == 1
-    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
-    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
     assert not playback.finished
     assert len(panel.content._selectable_items()) == 2
     assert_locked()
@@ -284,11 +331,11 @@ def test_selected_movement_shows_zone_details_and_resets() -> None:
     details = application.movement_panel
     assert details is not None
     lines = details.content._static_value()
-    assert "Drone: D-2" in lines
+    assert "Drone: D2" in lines
     assert "Zone: goal" in lines
-    assert "  color: red" in lines
-    assert "  zone_type: normal" in lines
-    assert "  max_drones: 1" in lines
+    assert "├─ color: red" in lines
+    assert "├─ zone_type: normal" in lines
+    assert "╰─ max_drones: 1" in lines
     assert "Other drones: D-1" in lines
     assert [row.panels for row in application.main_menu.content_layout] == [
         (application.graph_panel, panel),
@@ -334,7 +381,7 @@ def test_connection_details_use_replayed_occupancy() -> None:
     details = application.movement_panel
     assert details is not None
     assert "Connection: start-waypoint1" in details.content._static_value()
-    assert "  max_link_capacity: 2" in details.content._static_value()
+    assert "╰─ max_link_capacity: 2" in details.content._static_value()
     assert not any(
         line.startswith("Other drones:")
         for line in details.content._static_value()

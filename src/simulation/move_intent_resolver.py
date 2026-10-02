@@ -1,3 +1,5 @@
+"""Validate movement intents and resolve capacity conflicts."""
+
 from src.domain import Connection, Drone, Graph, Zone
 from src.domain.occupancy import Occupancy
 from src.simulation.move_intent import (
@@ -8,7 +10,13 @@ from src.simulation.move_intent import (
 
 
 class MoveIntentResolver:
-    """Validate and resolve movement conflicts for one simulation state."""
+    """Validate and resolve movement conflicts for one simulation state.
+
+    Attributes:
+        graph: Graph providing adjacency and capacity constraints.
+        drones: Drone states used to refresh occupancy.
+        occupancy: Shared tracker of current zone and connection counts.
+    """
 
     def __init__(
         self,
@@ -16,6 +24,15 @@ class MoveIntentResolver:
         drones: list[Drone],
         occupancy: Occupancy,
     ) -> None:
+        """Store the graph, fleet and shared occupancy tracker.
+
+        Args:
+            graph: Graph containing the fleet size, zones and connections.
+            drones: Drone states whose current positions or intents are
+                inspected.
+            occupancy: Shared tracker refreshed from current drone
+                positions.
+        """
         self.graph = graph
         self.drones = drones
         self.occupancy = occupancy
@@ -24,7 +41,19 @@ class MoveIntentResolver:
         self,
         move_intents: list[MoveIntent],
     ) -> tuple[list[MoveIntent], list[RejectedIntent]]:
-        """Resolve movement conflicts and keep their rejection causes."""
+        """Resolve movement conflicts and keep their rejection causes.
+
+        Args:
+            move_intents: Candidate drone movements for the current turn.
+
+        Returns:
+            Accepted intents and rejected intents with their blocking
+            resources.
+
+        Raises:
+            RuntimeError: If a candidate intent violates a drone state or
+                graph invariant.
+        """
         for move_intent in move_intents:
             self.validate_intent(move_intent)
 
@@ -38,10 +67,12 @@ class MoveIntentResolver:
                 accepted_intents,
                 rejected_intents,
             )
+
             accepted_intents = self._resolve_restricted_reservations(
                 accepted_intents,
                 rejected_intents,
             )
+
             accepted_intents = self._resolve_zone_capacities(
                 accepted_intents,
                 rejected_intents,
@@ -53,7 +84,16 @@ class MoveIntentResolver:
         return accepted_intents, rejected_intents
 
     def validate_intent(self, move_intent: MoveIntent) -> None:
-        """Validate invariant and graph rules for one movement."""
+        """Validate invariant and graph rules for one movement.
+
+        Args:
+            move_intent: Candidate movement to validate or test against
+                accepted moves.
+
+        Raises:
+            RuntimeError: If the drone state, destination or connection is
+                invalid.
+        """
         drone = move_intent.drone
         destination = move_intent.destination
         source = drone.zone
@@ -93,7 +133,17 @@ class MoveIntentResolver:
         move_intents: list[MoveIntent],
         rejected_intents: list[RejectedIntent],
     ) -> list[MoveIntent]:
-        """Reject movements exceeding connection capacities."""
+        """Reject movements exceeding connection capacities.
+
+        Args:
+            move_intents: Candidate drone movements for the current turn.
+            rejected_intents: List extended in place with rejected moves
+                and their blockers.
+
+        Returns:
+            Copy of candidate intents with overflowing connection moves
+            removed.
+        """
         accepted_intents = move_intents.copy()
 
         for connection in self.graph.connections:
@@ -119,6 +169,7 @@ class MoveIntentResolver:
 
             for intent in rejected:
                 accepted_intents.remove(intent)
+
                 rejected_intents.append(
                     RejectedIntent(
                         intent=intent,
@@ -133,7 +184,21 @@ class MoveIntentResolver:
         move_intent: MoveIntent,
         connection: Connection,
     ) -> bool:
-        """Return whether an intent traverses a connection."""
+        """Return whether an intent traverses a connection.
+
+        Args:
+            move_intent: Candidate movement to validate or test against
+                accepted moves.
+            connection: Undirected connection used for transit or conflict
+                checks.
+
+        Returns:
+            True if the intent traverses the connection in either
+            direction.
+
+        Raises:
+            RuntimeError: If the drone does not occupy a zone.
+        """
         source = move_intent.drone.zone
 
         if source is None:
@@ -157,7 +222,17 @@ class MoveIntentResolver:
         move_intents: list[MoveIntent],
         rejected_intents: list[RejectedIntent],
     ) -> list[MoveIntent]:
-        """Reserve capacity for drones entering restricted zones."""
+        """Reserve capacity for drones entering restricted zones.
+
+        Args:
+            move_intents: Candidate drone movements for the current turn.
+            rejected_intents: List extended in place with rejected moves
+                and their blockers.
+
+        Returns:
+            Copy of candidate intents that fits reserved restricted-zone
+            capacity.
+        """
         accepted_intents = move_intents.copy()
 
         for zone in self.graph.zones.values():
@@ -177,6 +252,7 @@ class MoveIntentResolver:
                 for intent in accepted_intents
                 if intent.drone.zone == zone
             ]
+
             reservation_intents = [
                 intent
                 for intent in accepted_intents
@@ -186,10 +262,12 @@ class MoveIntentResolver:
             occupancy_after_departures = (
                 current_occupancy - len(leaving_intents)
             )
+
             available_slots = (
                 zone.metadata.max_drones
                 - occupancy_after_departures
             )
+
             overflow = (
                 len(reservation_intents)
                 - max(0, available_slots)
@@ -206,6 +284,7 @@ class MoveIntentResolver:
 
             for intent in rejected:
                 accepted_intents.remove(intent)
+
                 rejected_intents.append(
                     RejectedIntent(
                         intent=intent,
@@ -220,7 +299,17 @@ class MoveIntentResolver:
         move_intents: list[MoveIntent],
         rejected_intents: list[RejectedIntent],
     ) -> list[MoveIntent]:
-        """Reject movements exceeding zone capacities this turn."""
+        """Reject movements exceeding zone capacities this turn.
+
+        Args:
+            move_intents: Candidate drone movements for the current turn.
+            rejected_intents: List extended in place with rejected moves
+                and their blockers.
+
+        Returns:
+            Copy of candidate intents that respects projected zone
+            occupancy.
+        """
         accepted_intents = move_intents.copy()
 
         for zone in self.graph.zones.values():
@@ -237,6 +326,7 @@ class MoveIntentResolver:
                 for intent in accepted_intents
                 if intent.drone.zone == zone
             ]
+
             entering_intents = [
                 intent
                 for intent in accepted_intents
@@ -251,6 +341,7 @@ class MoveIntentResolver:
                 - len(leaving_intents)
                 + len(entering_intents)
             )
+
             overflow = (
                 projected_occupancy
                 - zone.metadata.max_drones
@@ -267,6 +358,7 @@ class MoveIntentResolver:
 
             for intent in rejected:
                 accepted_intents.remove(intent)
+
                 rejected_intents.append(
                     RejectedIntent(
                         intent=intent,
@@ -281,7 +373,20 @@ class MoveIntentResolver:
         move_intent: MoveIntent,
         accepted_intents: list[MoveIntent],
     ) -> BlockingResource | None:
-        """Return what prevents an extra intent from being accepted."""
+        """Return what prevents an extra intent from being accepted.
+
+        Args:
+            move_intent: Candidate movement to validate or test against
+                accepted moves.
+            accepted_intents: Moves already accepted for this turn.
+
+        Returns:
+            Blocking zone or connection, or None if the extra intent fits.
+
+        Raises:
+            RuntimeError: If the drone does not occupy a zone.
+            ValueError: If no connection joins the source and destination.
+        """
         drone = move_intent.drone
         source = drone.zone
         destination = move_intent.destination
@@ -292,6 +397,7 @@ class MoveIntentResolver:
             )
 
         connection = self.graph.get_connection(source, destination)
+
         connection_usage = sum(
             1
             for intent in accepted_intents
@@ -311,6 +417,7 @@ class MoveIntentResolver:
             return None
 
         current_occupancy = self.zone_occupancy(destination)
+
         leaving_count = sum(
             1
             for intent in accepted_intents
@@ -323,9 +430,11 @@ class MoveIntentResolver:
                 for intent in accepted_intents
                 if intent.destination == destination
             )
+
             occupancy_after_departures = (
                 current_occupancy - leaving_count
             )
+
             available_slots = (
                 destination.metadata.max_drones
                 - occupancy_after_departures
@@ -344,6 +453,7 @@ class MoveIntentResolver:
                 and destination.metadata.zone_type != "restricted"
             )
         )
+
         projected_occupancy = (
             current_occupancy
             - leaving_count
@@ -357,6 +467,14 @@ class MoveIntentResolver:
         return None
 
     def zone_occupancy(self, zone: Zone) -> int:
-        """Return the current number of drones occupying a zone."""
+        """Refresh occupancy and return the drone count on a zone.
+
+        Args:
+            zone: Zone to inspect.
+
+        Returns:
+            Drone count on the zone after refreshing current positions.
+        """
         self.occupancy.refresh(self.drones)
+
         return self.occupancy.zone_occupancy(zone.name)

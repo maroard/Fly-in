@@ -76,15 +76,15 @@ def test_step_by_step_shows_one_turn_and_one_movement_per_line() -> None:
     first = simulator.state.turns[0]
     rows = panel_lines(application)
     assert rows == [
-        f"D-{move.drone_id}-{move.destination}"
+        f"D{move.drone_id}-{move.destination}"
         for move in first.movements
     ]
     panel = application.simulation_panel
     assert panel is not None
     assert panel.header == style("Turn 1:", bold=True)
     assert "[Space] Next move" in status(application)
-    assert "[Space] Next move" in status(application, width=42)
-    assert "[Shift+Space] Previous move" in status(application)
+    assert "[Backspace] Previous move" in status(application, width=42)
+    assert "[Backspace] Previous move" in status(application)
     assert "[↑/↓] Locate" not in status(application)
 
 
@@ -104,7 +104,9 @@ def test_turn_title_uses_the_whole_panel_width() -> None:
         assert viewport is not None
         title_row = next(row for row in frame if "Turn 1:" in row)
         plain = re.sub(r"\x1b\[[0-9;]*m", "", title_row)
-        assert plain.split("┊")[-2] == "Turn 1:".center(viewport.width)
+        assert plain.split("┊")[-2] == "Turn 1:".center(
+            viewport.width + panel.padding_left + panel.padding_right
+        )
 
 
 def test_shift_arrows_browse_turns_after_playback() -> None:
@@ -115,7 +117,7 @@ def test_shift_arrows_browse_turns_after_playback() -> None:
     panel = application.simulation_panel
     simulator = application.simulator
     assert panel is not None and simulator is not None
-    assert len(panel.key_commands) == 3
+    assert len(panel.key_commands) == 4
     menu._focused_panel = panel
     menu._handle_event(InputEvent(KeyBinding("right", shift=True)))
     assert panel.header == style("Turn 1:", bold=True)
@@ -130,7 +132,7 @@ def test_shift_arrows_browse_turns_after_playback() -> None:
     assert all(row.enabled for row in panel.content._selectable_items())
     assert "[Shift+←/→] Turns" in status(application)
     assert "[Shift+←/→] Turns" in status(application, width=42)
-    assert "[↑/↓] Locate" in status(application)
+    assert "[Tab] Focus" in status(application)
     menu._handle_event(InputEvent(KeyBinding("up")))
     assert panel.selected_index == 0
     menu._handle_event(InputEvent(KeyBinding("left", shift=True)))
@@ -146,7 +148,7 @@ def test_switching_to_one_shot_removes_space_command() -> None:
     start_simulation(application)
     panel = application.simulation_panel
     assert panel is not None
-    assert len(panel.key_commands) == 3
+    assert len(panel.key_commands) == 4
     application.simulation_mode = "one_shot"
     menu = application.main_menu
     command = next(
@@ -161,7 +163,7 @@ def test_switching_to_one_shot_removes_space_command() -> None:
     assert "[Space]" not in status(application)
 
 
-def test_global_previous_resumes_after_finished_historical_selection() -> None:
+def test_backspace_resumes_after_finished_historical_selection() -> None:
     application = Application()
     application.simulation_mode = "step_by_step"
     start_simulation(application)
@@ -175,14 +177,14 @@ def test_global_previous_resumes_after_finished_historical_selection() -> None:
     total = playback.completed_movements
     menu._handle_event(InputEvent(KeyBinding("left", shift=True)))
     assert "Turn 3:" in (panel.header or "")
-    menu._focused_panel = application.stats_panel
-    menu._handle_event(InputEvent(KeyBinding(" ", shift=True)))
+    menu._focused_panel = panel
+    menu._handle_event(InputEvent(KeyBinding("backspace")))
     assert not playback.finished
     assert playback.completed_movements == total - 1
     assert "Turn 4:" in (panel.header or "")
     assert panel.selected_index == 0
     assert playback.snapshot().positions[2].end.zone == "waypoint2"
-    assert "[Shift+Space] Previous move" in status(application)
+    assert "[Backspace] Previous move" in status(application)
     menu._focused_panel = application.graph_panel
     menu._handle_event(InputEvent(KeyBinding(" ")))
     elapsed = playback.last_elapsed + application.seconds_per_movement

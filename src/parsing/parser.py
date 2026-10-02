@@ -1,3 +1,5 @@
+"""Parse Fly-in map definitions and report contextual input errors."""
+
 from pathlib import Path
 from typing import NoReturn
 
@@ -9,18 +11,45 @@ from src.parsing.map_config import MapConfig
 
 
 class Parser:
+    """Read and validate a Fly-in map with contextual parsing errors.
+
+    Attributes:
+        content: Input file lines without their newline terminators.
+    """
+
     def __init__(self, map_path: Path) -> None:
+        """Read the map file as UTF-8 lines.
+
+        Args:
+            map_path: Path to the map file to read.
+
+        Raises:
+            ValueError: If no map path is supplied.
+            OSError: If the map file cannot be read.
+            UnicodeDecodeError: If the file content is not valid UTF-8.
+        """
         if not map_path:
             raise ValueError(
                 "map_path cannot be nothing"
             )
+
         with map_path.open(mode="r", encoding="utf-8") as file:
             self.content: list[str] = file.read().splitlines()
 
     def process(self) -> MapConfig:
+        """Parse all definitions and require one fleet, start hub and end hub.
+
+        Returns:
+            Validated map configuration ready to construct a graph.
+
+        Raises:
+            ValueError: If map syntax, values or required definitions are
+                invalid.
+        """
         nb_drones: int | None = None
         start_hub: Zone | None = None
         end_hub: Zone | None = None
+
         zones: dict[str, Zone] = {}
         connections: list[Connection] = []
 
@@ -55,6 +84,7 @@ class Parser:
                     raw_line,
                 )
                 first_data_line_seen = True
+
                 continue
 
             if key == "nb_drones":
@@ -86,6 +116,7 @@ class Parser:
                             raw_line,
                             "start_hub must be defined exactly once",
                         )
+
                     start_hub = zone
 
                 elif key == "end_hub":
@@ -95,9 +126,11 @@ class Parser:
                             raw_line,
                             "end_hub must be defined exactly once",
                         )
+
                     end_hub = zone
 
                 zones[zone.name] = zone
+
                 continue
 
             if key == "connection":
@@ -108,7 +141,9 @@ class Parser:
                     line_number,
                     raw_line,
                 )
+
                 connections.append(connection)
+
                 continue
 
             self._raise_parsing_error(
@@ -155,6 +190,24 @@ class Parser:
         raw_line: str,
         ignore_capacity: bool = False,
     ) -> Zone:
+        """Parse one zone and validate its coordinates and metadata.
+
+        Args:
+            raw_value: Unparsed value from a map definition.
+            line_number: One-based input line number used in error
+                messages.
+            raw_line: Original input line included in parsing error
+                messages.
+            ignore_capacity: Whether to ignore max_drones for a start or
+                end hub.
+
+        Returns:
+            Zone with parsed coordinates and validated metadata.
+
+        Raises:
+            ValueError: If the zone name, coordinates or metadata are
+                invalid.
+        """
         values = raw_value.split(maxsplit=3)
 
         if len(values) not in {3, 4}:
@@ -232,6 +285,24 @@ class Parser:
         line_number: int,
         raw_line: str,
     ) -> Connection:
+        """Parse a unique connection between already defined zones.
+
+        Args:
+            raw_value: Unparsed value from a map definition.
+            zones: Zones already parsed, indexed by name.
+            seen_connections: Canonical endpoint pairs, updated with the
+                new connection.
+            line_number: One-based input line number used in error
+                messages.
+            raw_line: Original input line included in parsing error
+                messages.
+
+        Returns:
+            Connection with validated endpoints and metadata.
+
+        Raises:
+            ValueError: If endpoints, uniqueness or metadata are invalid.
+        """
         values = raw_value.split(maxsplit=1)
         raw_connection = values[0]
 
@@ -311,6 +382,23 @@ class Parser:
         line_number: int,
         raw_line: str,
     ) -> int:
+        """Parse an integer strictly greater than zero.
+
+        Args:
+            raw_value: Unparsed value from a map definition.
+            field_name: Name of the integer field reported in parsing
+                errors.
+            line_number: One-based input line number used in error
+                messages.
+            raw_line: Original input line included in parsing error
+                messages.
+
+        Returns:
+            Parsed strictly positive integer.
+
+        Raises:
+            ValueError: If the value is not an integer greater than zero.
+        """
         try:
             value = int(raw_value)
         except ValueError:
@@ -330,7 +418,26 @@ class Parser:
         return value
 
     @staticmethod
-    def _get_nb_drones(raw_value: str, line_number: int, raw_line: str) -> int:
+    def _get_nb_drones(
+        raw_value: str,
+        line_number: int,
+        raw_line: str,
+    ) -> int:
+        """Parse the strictly positive fleet size.
+
+        Args:
+            raw_value: Unparsed value from a map definition.
+            line_number: One-based input line number used in error
+                messages.
+            raw_line: Original input line included in parsing error
+                messages.
+
+        Returns:
+            Number of drones required by the map.
+
+        Raises:
+            ValueError: If the fleet size is not a positive integer.
+        """
         return Parser._parse_positive_integer(
             raw_value,
             "nb_drones",
@@ -339,7 +446,23 @@ class Parser:
         )
 
     @staticmethod
-    def _split_line(line: str, line_number: int) -> tuple[str, str]:
+    def _split_line(
+        line: str,
+        line_number: int,
+    ) -> tuple[str, str]:
+        """Split a definition into its stripped key and value.
+
+        Args:
+            line: Input line to split or include in a parsing error.
+            line_number: One-based input line number used in error
+                messages.
+
+        Returns:
+            Stripped definition key and value.
+
+        Raises:
+            ValueError: If the separator, key or value is missing.
+        """
         key, separator, value = line.partition(":")
 
         key = key.strip()
@@ -361,6 +484,22 @@ class Parser:
         line_number: int,
         raw_line: str,
     ) -> dict[str, str]:
+        """Parse bracketed metadata and reject invalid or repeated keys.
+
+        Args:
+            raw_metadata: Bracketed metadata text from the map file.
+            allowed_keys: Metadata keys permitted for this definition.
+            line_number: One-based input line number used in error
+                messages.
+            raw_line: Original input line included in parsing error
+                messages.
+
+        Returns:
+            Metadata values indexed by their unique keys.
+
+        Raises:
+            ValueError: If brackets, entries or metadata keys are invalid.
+        """
         if (
             len(raw_metadata) < 2
             or not raw_metadata.startswith("[")
@@ -415,6 +554,19 @@ class Parser:
         line_number: int,
         raw_line: str,
     ) -> None:
+        """Reject empty zone names, dashes and whitespace.
+
+        Args:
+            name: Zone name to validate.
+            line_number: One-based input line number used in error
+                messages.
+            raw_line: Original input line included in parsing error
+                messages.
+
+        Raises:
+            ValueError: If the name is empty or contains dashes or
+                whitespace.
+        """
         if (
             not name
             or "-" in name
@@ -428,18 +580,41 @@ class Parser:
 
     @staticmethod
     def _format_validation_error(error: ValidationError) -> str:
+        """Combine Pydantic validation failures into a readable message.
+
+        Args:
+            error: Pydantic validation error whose messages must be
+                combined.
+
+        Returns:
+            Field names and messages separated by semicolons.
+        """
         messages: list[str] = []
 
         for detail in error.errors():
             field = ".".join(str(value) for value in detail["loc"])
+
             messages.append(f'{field}: {detail["msg"]}')
 
         return "; ".join(messages)
 
     @staticmethod
     def _raise_parsing_error(
-        line_number: int, line: str, cause: str
+        line_number: int,
+        line: str,
+        cause: str,
     ) -> NoReturn:
+        """Raise a parsing error with its line number and offending text.
+
+        Args:
+            line_number: One-based input line number used in error
+                messages.
+            line: Input line to split or include in a parsing error.
+            cause: Explanation of why the input line is invalid.
+
+        Raises:
+            ValueError: Always, with the contextual parsing error message.
+        """
         suffix = f'\nGot: "{line}"' if line else ""
 
         raise ValueError(

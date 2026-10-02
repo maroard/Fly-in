@@ -1,3 +1,5 @@
+"""Find minimum-turn paths with priority-zone tie breaking."""
+
 import heapq
 from math import inf
 
@@ -6,7 +8,18 @@ from src.pathfinding.path import Path
 
 
 class PathFinder:
+    """Find minimum-cost paths and prefer priority zones on cost ties.
+
+    Attributes:
+        graph: Graph searched without forbidden zones or connections.
+    """
+
     def __init__(self, graph: Graph) -> None:
+        """Store the graph used for path searches.
+
+        Args:
+            graph: Graph containing the fleet size, zones and connections.
+        """
         self.graph = graph
 
     def find_shortest_path(
@@ -16,6 +29,23 @@ class PathFinder:
         excluded_zones: list[Zone] | None = None,
         excluded_connections: list[Connection] | None = None,
     ) -> Path | None:
+        """Find a cheapest allowed path using Dijkstra traversal.
+
+        Entering restricted zones costs two turns; other accessible zones
+        cost one. Among equal-cost routes, prefer the route visiting more
+        priority zones.
+
+        Args:
+            start_zone: Starting zone, or None to use the graph start hub.
+            end_zone: Target zone, or None to use the graph end hub.
+            excluded_zones: Zones forbidden during this path search; None
+                excludes none.
+            excluded_connections: Connections forbidden during this search;
+                None excludes none.
+
+        Returns:
+            Cheapest path, or None if the destination cannot be reached.
+        """
         start = (
             start_zone
             if start_zone is not None
@@ -142,6 +172,14 @@ class PathFinder:
         )
 
     def _get_zone_cost(self, zone: Zone) -> int:
+        """Return the number of turns required to enter a zone.
+
+        Args:
+            zone: Zone to inspect.
+
+        Returns:
+            Two turns for a restricted zone, otherwise one turn.
+        """
         if zone.metadata.zone_type == "restricted":
             return 2
 
@@ -153,6 +191,17 @@ class PathFinder:
         start_name: str,
         end_name: str,
     ) -> Path:
+        """Reconstruct a path by following predecessor zone names.
+
+        Args:
+            previous: Mapping from each reached zone name to its
+                predecessor.
+            start_name: Name of the first zone of the reconstructed path.
+            end_name: Name of the last zone of the reconstructed path.
+
+        Returns:
+            Ordered path from the start zone to the end zone.
+        """
         current_name = end_name
         zones: list[str] = [current_name]
 

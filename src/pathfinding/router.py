@@ -1,3 +1,5 @@
+"""Assign drone paths and reroute blocked movement intents."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,7 +18,15 @@ if TYPE_CHECKING:
 
 
 class Router:
-    """Assign paths and reroute drones around rejected movements."""
+    """Assign paths and reroute drones around rejected movements.
+
+    Attributes:
+        graph: Graph used for initial and alternative route searches.
+        drones: Fleet whose desired moves are built.
+        resolver: Movement validator and blocking-resource inspector.
+        path_finder: Shortest-path search helper.
+        drone_paths: Currently assigned path indexed by drone identifier.
+    """
 
     def __init__(
         self,
@@ -24,12 +34,26 @@ class Router:
         drones: list[Drone],
         resolver: MoveIntentResolver,
     ) -> None:
+        """Assign the initial shortest path to every drone.
+
+        Args:
+            graph: Graph containing the fleet size, zones and connections.
+            drones: Drone states whose current positions or intents are
+                inspected.
+            resolver: Resolver used to validate intents and identify
+                blocking resources.
+
+        Raises:
+            RuntimeError: If the graph has no valid start-to-end path.
+        """
         self.graph = graph
         self.drones = drones
         self.resolver = resolver
+
         self.path_finder = PathFinder(graph)
 
         initial_path = self.path_finder.find_shortest_path()
+
         if initial_path is None:
             raise RuntimeError("No valid path for this graph.")
 
@@ -42,7 +66,20 @@ class Router:
         self,
         excluded_drone_ids: set[int],
     ) -> list[MoveIntent]:
-        """Build desired moves for drones that may move this turn."""
+        """Build desired moves for drones that may move this turn.
+
+        Args:
+            excluded_drone_ids: Drone identifiers that must not receive an
+                intent this turn.
+
+        Returns:
+            Desired moves for undelivered drones eligible to move this
+            turn.
+
+        Raises:
+            RuntimeError: If a drone state or its assigned path is
+                inconsistent.
+        """
         from src.simulation.move_intent import MoveIntent
 
         move_intents: list[MoveIntent] = []
@@ -67,6 +104,7 @@ class Router:
                 )
 
             drone_path = self.drone_paths[drone.id]
+
             next_zone_name = drone_path.get_next_zone_name(
                 drone.zone.name
             )
@@ -78,13 +116,17 @@ class Router:
                 )
 
             destination = self.graph.zones.get(next_zone_name)
+
             if destination is None:
                 raise RuntimeError(
                     f"Path references unknown zone '{next_zone_name}'."
                 )
 
             move_intents.append(
-                MoveIntent(drone, destination)
+                MoveIntent(
+                    drone,
+                    destination
+                )
             )
 
         return move_intents
@@ -94,7 +136,16 @@ class Router:
         rejected_intents: list[RejectedIntent],
         accepted_intents: list[MoveIntent],
     ) -> list[MoveIntent]:
-        """Reroute blocked drones when moving now is cheaper than waiting."""
+        """Reroute blocked drones when moving now is cheaper than waiting.
+
+        Args:
+            rejected_intents: Rejected moves whose drones may use an
+                alternative route.
+            accepted_intents: Moves already accepted for this turn.
+
+        Returns:
+            Extra intents accepted on cheaper immediately available routes.
+        """
         rerouted_intents: list[MoveIntent] = []
         protected_intents = accepted_intents.copy()
 
@@ -117,7 +168,20 @@ class Router:
         rejected_intent: RejectedIntent,
         accepted_intents: list[MoveIntent],
     ) -> MoveIntent | None:
-        """Find a cheaper immediately usable alternative for one drone."""
+        """Find a cheaper immediately usable alternative for one drone.
+
+        Args:
+            rejected_intent: Rejected movement and the resource blocking
+                it.
+            accepted_intents: Moves already accepted for this turn.
+
+        Returns:
+            Usable alternative intent, or None if waiting is preferable.
+
+        Raises:
+            RuntimeError: If the drone has no current zone or its path is
+                inconsistent.
+        """
         from src.simulation.move_intent import MoveIntent
 
         drone = rejected_intent.intent.drone
@@ -136,6 +200,7 @@ class Router:
 
         excluded_zones: list[Zone] = []
         excluded_connections: list[Connection] = []
+
         self._exclude_blocking_resource(
             rejected_intent.blocked_by,
             excluded_zones,
@@ -168,11 +233,16 @@ class Router:
             next_zone_name = alternative_path.get_next_zone_name(
                 current_zone.name
             )
+
             if next_zone_name is None:
                 return None
 
             destination = self.graph.zones[next_zone_name]
-            alternative_intent = MoveIntent(drone, destination)
+            alternative_intent = MoveIntent(
+                drone,
+                destination
+            )
+
             self.resolver.validate_intent(alternative_intent)
 
             blocker = self.resolver.blocking_resource(
@@ -182,6 +252,7 @@ class Router:
 
             if blocker is None:
                 self.drone_paths[drone.id] = alternative_path
+
                 return alternative_intent
 
             if not self._exclude_blocking_resource(
@@ -199,18 +270,31 @@ class Router:
         excluded_zones: list[Zone],
         excluded_connections: list[Connection],
     ) -> bool:
-        """Add a blocking resource to pathfinding exclusions once."""
+        """Add a blocking resource to pathfinding exclusions once.
+
+        Args:
+            resource: Zone or connection to add to the exclusion lists.
+            excluded_zones: Mutable exclusion list extended in place with
+                new blocking resources.
+            excluded_connections: Mutable exclusion list extended in place
+                with new blocking resources.
+
+        Returns:
+            True if an exclusion was added, False if it already existed.
+        """
         if isinstance(resource, Connection):
             if resource in excluded_connections:
                 return False
 
             excluded_connections.append(resource)
+
             return True
 
         if resource in excluded_zones:
             return False
 
         excluded_zones.append(resource)
+
         return True
 
     def _get_remaining_path_cost(
@@ -218,7 +302,19 @@ class Router:
         path: Path,
         current_zone: Zone,
     ) -> int:
-        """Return the movement cost from a current zone to path end."""
+        """Return the movement cost from a current zone to path end.
+
+        Args:
+            path: Assigned path whose remaining movement cost must be
+                calculated.
+            current_zone: Zone from which the remaining path is evaluated.
+
+        Returns:
+            Sum of destination-zone movement costs after the current zone.
+
+        Raises:
+            RuntimeError: If the path does not contain the current zone.
+        """
         try:
             current_index = path.zones.index(current_zone.name)
         except ValueError as error:

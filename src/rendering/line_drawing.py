@@ -1,7 +1,19 @@
+"""Compute discrete lines between terminal cells."""
+
+
 def get_line_points(
     start: tuple[int, int],
     end: tuple[int, int],
 ) -> list[tuple[int, int]]:
+    """Compute a discrete straight line including both endpoint cells.
+
+    Args:
+        start: First terminal cell of the line.
+        end: Last terminal cell of the line.
+
+    Returns:
+        Ordered cells from start to end, with both endpoints included.
+    """
     x1, y1 = start
     x2, y2 = end
 

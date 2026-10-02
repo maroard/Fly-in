@@ -6,7 +6,7 @@ from tuiloom.render.menu_renderer import MenuRenderer
 from tuiloom.render.terminal_renderer import TerminalRenderer
 
 from src.application import Application
-from src.ui.menus.map_menu import build_map_menu
+from src.ui.menus.map_menu import MapMenu
 
 
 def activate(menu: TerminalMenu, label: str) -> None:
@@ -48,16 +48,14 @@ def test_initial_map_selection_and_later_map_change(
     assert "Settings" in [
         command.label for command in application.main_menu.commands
     ]
-    main_text = application.main_menu.display_state.text
-    assert main_text is not None
-    assert "No map selected" in main_text
+    main_status = make_main_renderer(application)._compose_frame(120, 40)[-1]
+    assert "NO MAP" in main_status
 
     application.terminal_app.push_menu(map_menu)
     select_map(map_menu, "Easy", "01_linear_path.txt")
     assert application.map_path == Path("maps/easy/01_linear_path.txt")
-    main_text = application.main_menu.display_state.text
-    assert main_text is not None
-    assert "easy/01_linear_path.txt" in main_text
+    main_status = make_main_renderer(application)._compose_frame(120, 40)[-1]
+    assert "easy/01_linear_path.txt" in main_status
     assert application.terminal_app._menu_stack == [application.main_menu]
 
     activate(application.main_menu, "Run simulation")
@@ -70,9 +68,8 @@ def test_initial_map_selection_and_later_map_change(
     map_menu = application.terminal_app._menu_stack[-1]
     select_map(map_menu, "Medium", "01_dead_end_trap.txt")
     assert application.map_path == Path("maps/medium/01_dead_end_trap.txt")
-    main_text = application.main_menu.display_state.text
-    assert main_text is not None
-    assert "medium/01_dead_end_trap.txt" in main_text
+    main_status = make_main_renderer(application)._compose_frame(120, 40)[-1]
+    assert "medium/01_dead_end_trap.txt" in main_status
     assert application.terminal_app._menu_stack == [application.main_menu]
     assert application.simulator is None
     assert application.main_menu.content_panels == ()
@@ -80,7 +77,7 @@ def test_initial_map_selection_and_later_map_change(
 
 def test_category_choice_selects_a_later_map_without_submenu() -> None:
     application = Application()
-    map_menu = build_map_menu(application)
+    map_menu = MapMenu.build(application)
     application.terminal_app.push_menu(map_menu)
 
     select_map(map_menu, "Easy", "02_simple_fork.txt")
@@ -91,7 +88,7 @@ def test_category_choice_selects_a_later_map_without_submenu() -> None:
 
 def test_routing_mode_change_restarts_simulation() -> None:
     application = Application()
-    map_menu = build_map_menu(application)
+    map_menu = MapMenu.build(application)
     application.terminal_app.push_menu(map_menu)
     select_map(map_menu, "Easy", "02_simple_fork.txt")
 
@@ -129,7 +126,7 @@ def test_routing_mode_change_restarts_simulation() -> None:
 
 def test_reopened_map_menu_marks_only_the_active_map() -> None:
     application = Application()
-    initial = build_map_menu(application)
+    initial = MapMenu.build(application)
     assert all(
         isinstance(choice, MenuChoice) and choice.selected_index is None
         for choice in initial.commands
@@ -157,7 +154,7 @@ def test_reopened_map_menu_marks_only_the_active_map() -> None:
 
 
 def select_linear_map(application: Application) -> None:
-    maps = build_map_menu(application)
+    maps = MapMenu.build(application)
     application.terminal_app.push_menu(maps)
     select_map(maps, "Easy", "01_linear_path.txt")
 
@@ -209,11 +206,11 @@ def test_panel_sizing_gives_graph_more_width_than_side_panels() -> None:
     assert output._runtime.viewport is not None
     assert info._runtime.viewport is not None
     assert graph._runtime.viewport.width > output._runtime.viewport.width
-    assert output._runtime.viewport.width > info._runtime.viewport.width
+    assert output._runtime.viewport.width == info._runtime.viewport.width
     assert graph._runtime.effective_size is not None
     assert graph._runtime.effective_size.height >= 20
     assert len(frame) == 26
-    assert info.description == "Info"
+    assert info.description == "Stats"
 
 
 def make_main_renderer(application: Application) -> TerminalRenderer:
@@ -232,24 +229,30 @@ def test_status_tracks_map_simulation_and_reset_at_unchanged_width() -> None:
 
     select_linear_map(application)
     ready = renderer._compose_frame(120, 40)[-1]
-    assert ready.startswith("READY")
+    assert ready.lstrip().startswith("READY")
     assert "easy/01_linear_path.txt" in ready
-    assert "Turn 0" in ready
-    assert "0/2 delivered" in ready
+    assert "[M] Menu" in ready
     assert "[Tab]" not in ready
     assert menu.content_panels == ()
 
     activate(menu, "Run simulation")
     running = renderer._compose_frame(120, 40)[-1]
-    assert running.startswith("RUNNING")
-    assert "Turn 1/4" in running
+    assert running.lstrip().startswith("RUNNING")
+    assert application.stats_panel is not None
+    assert "Current turn: 1/4" in (
+        application.stats_panel.content._static_value()
+    )
     assert application.playback_tick is not None
     application.playback_tick.callback(AnimationFrame(0, 0))
     application.playback_tick.callback(AnimationFrame(4, 80))
     done = renderer._compose_frame(120, 40)[-1]
-    assert done.startswith("DONE")
-    assert "Turn 4/4" in done
-    assert "2/2 delivered" in done
+    assert done.lstrip().startswith("DONE")
+    assert "Current turn: 4/4" in (
+        application.stats_panel.content._static_value()
+    )
+    assert "Drones delivered: 2/2" in (
+        application.stats_panel.content._static_value()
+    )
     assert "[Tab] Focus" in done
     assert len(menu.content_panels) == 3
 
@@ -272,20 +275,20 @@ def test_status_responsive_layout_and_explicit_refresh_example() -> None:
     application.simulator = simulator
     menu.refresh_status_bar()
     initial = renderer._compose_frame(120, 40)[-1]
-    assert initial.startswith("READY")
+    assert initial.lstrip().startswith("READY")
     simulator.step()
     # Responsive values stay cached until a width change or explicit refresh.
     assert renderer._compose_frame(120, 40)[-1] == initial
     menu.refresh_status_bar()
     full = renderer._compose_frame(120, 40)[-1]
-    assert full.startswith("RUNNING")
-    assert "Turn 1" in full
-    assert "0/2 delivered" in full
-    medium = renderer._compose_frame(65, 40)[-1]
+    assert full.lstrip().startswith("RUNNING")
+    assert "Map: easy/01_linear_path.txt" in full
+    medium = renderer._compose_frame(50, 40)[-1]
     assert "Map:" not in medium
-    assert "Turn 1" in medium
+    assert medium.lstrip().startswith("RUNNING")
+    assert "[M] Menu" in medium
     compact = renderer._compose_frame(42, 40)[-1]
-    assert compact == "RUNNING │ T1 │ 0/2 │ [Esc] Quit"
+    assert compact.lstrip() == "RUNNING │ [M] Menu │ [Esc] Quit"
     for width in (1, 25, 42, 65, 120):
         frame = renderer._compose_frame(width, 40)
         assert len(frame) in (1, 40)
